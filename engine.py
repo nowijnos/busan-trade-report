@@ -67,8 +67,12 @@ def set_text(cell,value):
         if run is None:
             run=etree.SubElement(para,Q('run'))
         texts=[etree.SubElement(run,Q('t'))]
+    # Drop obsolete inline revision/highlight controls and their tails.
+    # Otherwise a template's highlight marker can leak stale punctuation after rewritten text.
+    for t in texts:
+        for child in list(t):t.remove(child)
+        t.text=''
     texts[0].text=value
-    for t in texts[1:]:t.text=''
 
 def get_text(element):return ''.join(element.xpath('.//hp:t/text()',namespaces=N)).strip()
 
@@ -87,6 +91,139 @@ def set_row(row,name,metrics,rank=None,audit=None):
             if audit:
                 if value=='' or value is None:audit.empty+=1
                 else:audit.filled+=1
+
+
+# Month-to-month category allocation: an MTI2 parent consumes one fixed table
+# row, each MTI4 item consumes one. Optimise *exact* available row capacity.
+# This prevents the silent blank row caused by dropping the last category.
+def select_mti_sections(items, capacity, trade='수출'):
+    candidates=[x for x in items if x['rank']<=20 and x['current']>0 and x['group_code']]
+    grouped=defaultdict(list)
+    for it in candidates:grouped[it['group_code']].append(it)
+    def importance(x):
+        # Monthly amount rank dominates; large material changes are rewarded.
+        r=x['rank']; delta=abs(x['current']-x['previous'])
+        return (110.0/(1+.25*(r-1))
+                +min(35.0,delta/1e7*5)
+                + (min(15,abs(x['rate'])/35) if x['rate'] is not None and x['current']>=1e7 else 0)
+                + (35 if r<=10 and x['rate'] is not None and abs(x['rate'])>=25 and x['current']>=2e7 else 0))
+    groups=sorted(grouped.items(),key=lambda kv:min(x['rank'] for x in kv[1]))
+    dp={0:(0.0,[])}
+    for code,choices in groups:
+        sorted_choices=sorted(choices,key=lambda x:(-importance(x),x['rank']))
+        nextdp=dict(dp)
+        for used,(value,selected) in dp.items():
+            for n in range(1,len(sorted_choices)+1):
+                cost=n+1
+                if used+cost>capacity:break
+                chosen=sorted_choices[:n]
+                score=value+sum(importance(x) for x in chosen)
+                previous=nextdp.get(used+cost)
+                if previous is None or score>previous[0]:
+                    nextdp[used+cost]=(score,selected+chosen)
+        dp=nextdp
+    if capacity not in dp:
+        # If source top-20 simply cannot fill capacity, do not invent data.
+        best=max(dp)
+        selected=dp[best][1]
+    else:selected=dp[capacity][1]
+    output=defaultdict(list)
+    for x in selected:output[x['group_code']].append(x)
+    return [(g,sorted(its,key=lambda z:z['rank'])) for g,its in sorted(output.items(),key=lambda kv:min(z['rank'] for z in kv[1]))]
+
+# Format style helper: keep the original border geometry and only recolour
+# using a copy of each unique border/fill style.
+def create_style_context(header):
+    hh='{http://www.hancom.co.kr/hwpml/2011/head}'
+    hc='{http://www.hancom.co.kr/hwpml/2011/core}'
+    bf=header.find('.//'+hh+'borderFills')
+    cp=header.find('.//'+hh+'charProperties')
+    if bf is None or cp is None:raise Reject('HWPX 서식 목록을 찾지 못했습니다.')
+    return {'bf':bf,'cp':cp,'hh':hh,'hc':hc,'bf_cache':{},'cp_cache':{},
+            'bf_next':max(int(x.get('id')) for x in bf)+1,
+            'cp_next':max(int(x.get('id')) for x in cp)+1}
+
+def set_cell_fill_color(cell, color, styles):
+    src_id=cell.get('borderFillIDRef')
+    cache_key=(src_id,color)
+    if cache_key not in styles['bf_cache']:
+        bf=styles['bf'];hh=styles['hh'];hc=styles['hc']
+        old=next((x for x in bf if x.get('id')==src_id),None)
+        if old is None:raise Reject(f'셀 테두리 서식 번호 누락: {src_id}')
+        clone=deepcopy(old)
+        clone.set('id',str(styles['bf_next']));styles['bf_next']+=1
+        brush=clone.find(hc+'fillBrush')
+        if brush is None:brush=etree.SubElement(clone,hc+'fillBrush')
+        win=brush.find(hc+'winBrush')
+        if win is None:win=etree.SubElement(brush,hc+'winBrush')
+        win.set('faceColor',color)
+        win.set('hatchColor','#000000')
+        win.set('alpha','0')
+        bf.append(clone);bf.set('itemCnt',str(len(bf)))
+        styles['bf_cache'][cache_key]=clone.get('id')
+    cell.set('borderFillIDRef',styles['bf_cache'][cache_key])
+
+def set_row_band(row, is_group, styles):
+    shade='#F9EDF5' if is_group else '#FFFFFF'
+    for c in cells(row):set_cell_fill_color(c,shade,styles)
+
+def set_cell_safe_spacing(cell, value, styles):
+    # This is an isolated CHAR SPACING change. Never resize a cell or shrink text.
+    length=len(str(value))
+    target=-18 if length>=8 else (-10 if length>=7 else None)
+    if target is None:return
+    for run in cell.xpath('.//hp:run[hp:t]',namespaces=N):
+        old_id=run.get('charPrIDRef')
+        if not old_id:continue
+        key=(old_id,target)
+        if key not in styles['cp_cache']:
+            cp=styles['cp'];hh=styles['hh']
+            old=next((x for x in cp if x.get('id')==old_id),None)
+            if old is None:continue
+            clone=deepcopy(old);clone.set('id',str(styles['cp_next']));styles['cp_next']+=1
+            spacing=clone.find(hh+'spacing')
+            if spacing is None:spacing=etree.SubElement(clone,hh+'spacing')
+            for k in list(spacing.attrib):spacing.set(k,str(max(-30,min(int(spacing.get(k,'0')),target))))
+            cp.append(clone);cp.set('itemCnt',str(len(cp)))
+            styles['cp_cache'][key]=clone.get('id')
+        if key in styles['cp_cache']:run.set('charPrIDRef',styles['cp_cache'][key])
+
+def use_word_safe_left_align(header,root,positions):
+    # Only the requested long continent descriptions are affected.
+    # We clone the paragraph style rather than changing unrelated paragraphs.
+    hh='{http://www.hancom.co.kr/hwpml/2011/head}'
+    container=header.find('.//'+hh+'paraProperties')
+    if container is None:return
+    nextid=max(int(x.get('id')) for x in container)+1
+    cache={}
+    paragraphs=root.xpath('//hp:p[not(ancestor::hp:tbl)]',namespaces=N)
+    for idx in positions:
+        if idx>=len(paragraphs):continue
+        p=paragraphs[idx];source=p.get('paraPrIDRef')
+        if source not in cache:
+            old=next((x for x in container if x.get('id')==source),None)
+            if old is None:continue
+            clone=deepcopy(old);clone.set('id',str(nextid));nextid+=1
+            align=clone.find(hh+'align')
+            if align is not None:align.set('horizontal','LEFT')
+            br=clone.find(hh+'breakSetting')
+            if br is not None:
+                br.set('breakNonLatinWord','KEEP_WORD')
+                br.set('breakLatinWord','KEEP_WORD')
+            container.append(clone)
+            cache[source]=clone.get('id')
+        if source in cache:p.set('paraPrIDRef',cache[source])
+    container.set('itemCnt',str(len(container)))
+
+def normalise_generated_body_style(root, positions):
+    # No template-specific red run (74), bold first run (58), exaggerated
+    # tracking or artificial highlighting can leak into generated prose.
+    pp=root.xpath('//hp:p[not(ancestor::hp:tbl)]',namespaces=N)
+    for idx in positions:
+        if idx>=len(pp):continue
+        p=pp[idx]
+        for run in p.xpath('./hp:run[hp:t]',namespaces=N):
+            run.set('charPrIDRef','47')  # 14pt regular black, 0 tracking
 
 def from_main(sheet,row):
     # Row layout: previous month CDE, current month FGH, previous YTD IJK,
@@ -264,65 +401,205 @@ def set_p_by_prefix(root,prefix,value,audit):
 
 
 def fill_headline_paras(root0,root1,main,year,month,audit):
-    # Template paragraphs are identified by their original content before blanking.
-    t0=[];t1=[]
-    for root,s in [(root0,t0),(root1,t1)]:
-        for p in root.xpath('//hp:p[not(ancestor::hp:tbl)]',namespaces=N):
-            text=get_text(p)
-            if text and text.lstrip().startswith(('ㅇ','-')):s.append((p,text))
-    sh=main.sheet('1_지역총괄')
-    mexp,imp=number(sh.val(6,'E')),number(sh.val(8,'E'))
-    eg,ig=number(sh.val(7,'E')),number(sh.val(9,'E'))
-    nationwide=number(sh.val(7,'F'))
-    trade=number(sh.val(10,'E'))
-    narrative={}
-    export_head=f'ㅇ {year}년 {month}월 부산지역 수출은 전년 동월 대비 {rate_line(eg,"export")}한 {won_dollar_phrase(mexp)} 기록' if eg is not None else ''
-    import_head=f'ㅇ {year}년 {month}월 부산지역 수입은 전년 동월 대비 {rate_line(ig,"import")}한 {won_dollar_phrase(imp)} 기록' if ig is not None else ''
-    # rate_line already ends with 증가/감소, so no double verb.
-    export_head=export_head.replace('증가한','증가한').replace('감소한','감소한')
-    import_head=import_head.replace('증가한','증가한').replace('감소한','감소한')
-    if trade is not None:
-        trade_head=f'ㅇ {year}년 {month}월 부산지역 무역수지는 {won_dollar_phrase(abs(trade))} {"흑자" if trade>0 else "적자" if trade<0 else "균형"} 기록'
-    else:trade_head=''
-    # Section0 top level: primary facts and continental movements.
-    export_paras=[p for p,t in t0 if t.startswith('ㅇ') and '부산지역 수출은' in t]
-    if export_paras:
-        set_text(export_paras[0],export_head)
-        if len(export_paras)>1:set_text(export_paras[1],f'ㅇ {year}년 {month}월 부산지역 수출 증가율은 {fpct(eg)}%로 전국 평균({fpct(nationwide)}%)과 비교' if eg is not None and nationwide is not None else '')
-    imp_paras=[p for p,t in t0 if t.startswith('ㅇ') and '부산지역 수입은' in t]
-    if imp_paras:set_text(imp_paras[0],import_head)
-    trade_paras=[p for p,t in t0 if '무역수지는' in t]
-    if trade_paras:set_text(trade_paras[0],trade_head)
-    # Section0 and section1: create only clearly supported percentage summary.
-    reg=main.sheet('9_대륙')
-    region_rows={str(reg.val(r,'B')):reg.val(r,'G') for r in range(5,13)}
-    up=[k for k,v in region_rows.items() if number(v) is not None and number(v)>=0]
-    down=[k for k,v in region_rows.items() if number(v) is not None and number(v)<0]
-    geo='ㅇ 대륙별로 '+', '.join(up)+' 수출은 증가하고 '+', '.join(down)+' 수출은 감소' if len(region_rows)==8 else ''
-    for p,t in t0+t1:
-        if t.startswith(' - 대륙별로') or t.startswith('ㅇ 대륙별로'):set_text(p,geo)
-    # Fresh calendar/month titles are handled separately. Everything else with facts gets
-    # blanked unless generated explicitly below, never retain previous month narrative.
-    keep=set(export_paras+imp_paras+trade_paras)
-    for p,t in t0+t1:
-        if p in keep or t.startswith((' - 대륙별로','ㅇ 대륙별로')):continue
-        if '전년 동월' in t and '부산지역 수출은' in t:set_text(p,export_head);keep.add(p);continue
-        if '전년 동월' in t and '부산지역 수입은' in t:set_text(p,import_head);keep.add(p);continue
-        if '무역수지는' in t:set_text(p,trade_head);keep.add(p);continue
-        if t.startswith(('ㅇ','-')):
-            set_text(p,'');audit.empty+=1
-    # Import stages fully supported by imported section.
-    st=main.sheet('10_가공단계')
-    stages=[]
-    for r in range(16,21):
-        nm=str(st.val(r,'B') or '');pct=number(st.val(r,'G'))
-        if pct is not None:stages.append(f'{nm}({fpct(pct)}%)')
-    for p,t in t1:
-        if '가공단계별 수입' in t and t.startswith('ㅇ'):
-            set_text(p,('ㅇ 가공단계별 수입 증감률은 '+', '.join(stages)+'로 나타남') if len(stages)==5 else '')
-    # Important: do not author speculative causal explanations.
-    audit.note('원인 분석·특정 국가 세부품목 설명 등은 통계만으로 확정할 수 없어 본문 공란 처리했습니다.')
+    """Rewrite *existing* paragraphs with verified facts or conspicuous author prompts.
 
+    Neither paragraph count nor table dimensions change. Do not leave stale 2026
+    narrative and do not manufacture economic causes from a percentage series.
+    """
+    paras=[]
+    for root in (root0,root1):
+        pp=[p for p in root.xpath('//hp:p[not(ancestor::hp:tbl)]',namespaces=N)]
+        paras.append({i:p for i,p in enumerate(pp)})
+    mainsh=main.sheet('1_지역총괄')
+    expo,impo=(number(mainsh.val(row,'E')) for row in (6,8))
+    exp_rate,imp_rate=(number(mainsh.val(row,'E')) for row in (7,9))
+    nat_rate=number(mainsh.val(7,'F'))
+    trade=number(mainsh.val(10,'E'))
+    mti=main.sheet('6_품목별(MTI4)')
+    exports=get_mti4(mti,'수출'); imports=get_mti4(mti,'수입')
+    by_name={v['name']:v for v in exports}
+    # Explanatory commentary must describe the same dynamically selected MTI4 rows.
+    top_exp=[x for _,entries in select_mti_sections(exports,16,'수출') for x in entries]
+    top_imp=[x for _,entries in select_mti_sections(imports,17,'수입') for x in entries]
+
+    def pct(n):return (fpct(n)+'%') if n is not None else None
+    def change(n):
+        return f'{pct(abs(n))} '+('증가' if n>=0 else '감소') if n is not None else None
+    def author(label):return f'[작성자 입력: {label}]'
+    def vplace(side,index,value):
+        # If quantitative basis is absent, leave an explicit editorial marker,
+        # not an empty paragraph or an inferred figure.
+        target=paras[side].get(index)
+        if target is None:raise Reject(f'템플릿 본문 위치가 달라졌습니다: {side}/{index}')
+        value=value or f'ㅇ {author("통계 조회 및 서술 확인")}'
+        set_text(target,value)
+        if '[작성자 입력:' in value:
+            audit.issue(f'본문 {"수출/개황" if side==0 else "수출입 분석"} 문단 {index}: 작성자 검토 문구 포함')
+        if len(value)>145:
+            audit.note(f'본문 문단 {index}: 설명문 길이 {len(value)}자, 한컴 페이지/줄바꿈 확인 필요')
+
+    export_head=(f'ㅇ {year}년 {month}월 부산지역 수출은 전년 동월 대비 {change(exp_rate)}한 {won_dollar_phrase(expo)} 기록' if expo is not None and exp_rate is not None else '')
+    import_head=(f'ㅇ {year}년 {month}월 부산지역 수입은 전년 동월 대비 {change(imp_rate)}한 {won_dollar_phrase(impo)} 기록' if impo is not None and imp_rate is not None else '')
+    trade_head=(f'ㅇ {year}년 {month}월 부산지역 무역수지는 {won_dollar_phrase(abs(trade))} {"흑자" if trade>0 else "적자" if trade<0 else "균형"} 기록' if trade is not None else '')
+
+    def noteworthy(records,sign,n=2):
+        found=[x for x in records if x['rate'] is not None and (x['rate']>0 if sign>0 else x['rate']<0) and x['current']>1000000]
+        found.sort(key=lambda x: abs(x['current']-x['previous']),reverse=True)
+        return found[:n]
+    def item_tag(x):return f'{x["name"]}({x["rank"]}위, {pct(x["rate"])})'
+    up,down=noteworthy(top_exp,1,2),noteworthy(top_exp,-1,1)
+    summary=('·'.join(item_tag(x) for x in up)+(' 수출 증가' if up else ''))
+    if down:summary+=(', ' if summary else '')+'·'.join(item_tag(x) for x in down)+' 수출 감소'
+    vplace(0,28,export_head)
+    vplace(0,30,('- '+summary if summary else '- '+author('주요 수출 품목 변동')))
+
+    cont=main.sheet('9_대륙')
+    regions={str(cont.val(r,'B') or '').strip():number(cont.val(r,'G')) for r in range(5,13)}
+    if len(regions)==8 and all(v is not None for v in regions.values()):
+        positive=[f'{nm}({pct(val)})' for nm,val in regions.items() if val>=0]
+        negative=[f'{nm}({pct(val)})' for nm,val in regions.items() if val<0]
+        geo='- 대륙별 수출은 '+', '.join(positive)+'에서 증가'
+        if negative:geo+=', '+', '.join(negative)+'에서 감소'
+    else:geo='- '+author('대륙별 수출 증감률 확인')
+    if len(regions)==8 and all(v is not None for v in regions.values()):
+        rising=[n for n,v in regions.items() if v>=0]
+        falling_geo=[n for n,v in regions.items() if v<0]
+        biggest=max(regions.items(),key=lambda kv:abs(kv[1]))
+        overview='- 대륙별로 '+ '·'.join(rising)+'에서 수출 증가'
+        if falling_geo:overview+=', '+ '·'.join(falling_geo)+'에서는 감소'
+        overview+=f'({biggest[0]} {change(biggest[1])})'
+        vplace(0,32,overview)
+    else:vplace(0,32,geo)
+    if exp_rate is not None and nat_rate is not None:
+        compared='높은' if exp_rate>nat_rate else '낮은' if exp_rate<nat_rate else '동일한'
+        diff=abs(exp_rate-nat_rate)
+        text=f'ㅇ 부산 수출 증감률은 {pct(exp_rate)}로 전국 평균({pct(nat_rate)})보다 {pct(diff)}p {compared} 수준' if compared!='동일한' else f'ㅇ 부산 수출 증감률은 전국 평균과 동일한 {pct(exp_rate)} 기록'
+    else:text=''
+    vplace(0,34,text)
+    vplace(0,38,import_head)
+    st=main.sheet('10_가공단계')
+    stage=[(str(st.val(r,'B') or '').strip(),number(st.val(r,'G'))) for r in range(16,21)]
+    if len(stage)==5 and all(nm and r is not None for nm,r in stage):
+        pos=[f'{nm}({pct(v)})' for nm,v in stage if v>=0]
+        neg=[f'{nm}({pct(v)})' for nm,v in stage if v<0]
+        txt='- 가공단계별 수입은 '+', '.join(pos)+' 증가'
+        if neg:txt+=', '+', '.join(neg)+' 감소'
+    else:txt='- '+author('가공단계별 수입실적 확인')
+    vplace(0,40,txt)
+    rise=noteworthy(top_imp,1,3)
+    txt=('ㅇ 주요 수입 품목 중 '+', '.join(item_tag(x) for x in rise)+' 증가. '+author('수입 증가 배경') if rise else '')
+    vplace(0,42,txt)
+    vplace(0,46,trade_head)
+
+    # Section0: export trend, month-on-month, notable MTI4 product descriptions.
+    vplace(0,55,export_head)
+    mon=main.sheet('2_3년간월별수출입')
+    months=[]
+    for r in range(5,41):
+        ym=str(mon.val(r,'B') or '')
+        if re.fullmatch(r'20\d\d\.\d\d',ym):
+            current=number(mon.val(r,'C')); yoy=number(mon.val(r,'D'))
+            if current is not None and yoy is not None:months.append((ym,current,yoy))
+    months=sorted(months,key=lambda x:x[0],reverse=True)
+    if len(months)>=3:
+        prior3=list(reversed(months[:3]))
+        if all(r>0 for _,_,r in prior3):
+            trend=f'- {int(prior3[0][0][5:])}~{int(prior3[-1][0][5:])}월 전년 동월 대비 수출 증가세 지속'
+        elif all(r<0 for _,_,r in prior3):
+            trend=f'- 최근 3개월 전년 동월 대비 수출 감소세 지속'
+        else:
+            trend='- 월별 수출 증감률의 등락이 이어지는 가운데 '+f'{month}월 전년 동월 대비 {change(prior3[-1][2])}'
+        vplace(0,57,trend)
+    else:vplace(0,57,'- '+author('최근 월별 수출 추세 확인'))
+    if len(months)>=2 and months[0][1] and months[1][1]:
+        mom=(months[0][1]/months[1][1]-1)*100
+        vplace(0,59,f'ㅇ 전월 대비 {month}월 부산지역 수출액은 {change(mom)}')
+    else:vplace(0,59,'ㅇ '+author('전월 대비 수출 증감률'))
+    up=noteworthy(top_exp,1,3)
+    down=noteworthy(top_exp,-1,2)
+    inc_text='·'.join(x['name'] for x in up[:3])
+    dec_text='·'.join(x['name'] for x in down[:2])
+    if up and down:
+        intro=f'ㅇ 품목별로는 {inc_text} 등의 수출이 증가한 반면, {dec_text} 수출은 감소'
+    elif up:
+        intro=f'ㅇ 품목별로는 {inc_text} 등 주요 품목을 중심으로 수출 증가'
+    elif down:
+        intro=f'ㅇ 품목별로는 {dec_text} 등의 수출이 감소'
+    else:intro='ㅇ '+author('주요 품목별 수출 동향')
+    vplace(0,67,intro)
+    # Choose four material changes, with category diversity to mimic Mar-Apr-May.
+    ranked=sorted(top_exp,key=lambda x:(abs(x['current']-x['previous']),abs(x['rate'] or 0)),reverse=True)
+    featured=[];seen_groups=set()
+    # Reflect major negative and positive shocks even if in the same MTI2 group.
+    biggest_fall=next((x for x in ranked if x['rate'] is not None and x['rate']<0),None)
+    biggest_rise=next((x for x in ranked if x['rate'] is not None and x['rate']>0),None)
+    for rec in (biggest_fall,biggest_rise):
+        if rec and rec not in featured:
+            featured.append(rec);seen_groups.add(rec['group_code'])
+    for rec in ranked:
+        if len(featured)==4:break
+        if rec not in featured and rec['group_code'] not in seen_groups:
+            featured.append(rec);seen_groups.add(rec['group_code'])
+    for rec in ranked:
+        if len(featured)==4:break
+        if rec not in featured:featured.append(rec)
+    for pos,rec in zip((69,71,73,75),featured):
+        clause=f'- [{rec["name"]}] 전년 동월 대비 {change(rec["rate"])}하며 당월 수출금액 {rec["rank"]}위 기록' if rec['rate'] is not None else f'- [{rec["name"]}] '+author('증감률 확인')
+        vplace(0,pos,clause+'. '+author('국가별 실적 및 변동 원인'))
+    for pos in (69,71,73,75)[len(featured):]:vplace(0,pos,'- '+author('주요 수출 품목 분석'))
+
+    # Section1: continents, top destinations, national region comparison, imports.
+    vplace(1,2,'ㅇ '+geo.lstrip('- '))
+    destination=main.sheet('8_국가')
+    destrows={str(destination.val(r,'B') or '').strip():r for r in range(5,25)}
+    top_by_dest=main.sheet('13_국가별상위10대수출품목(MTI4)')
+    for pos,country in [(4,'미국'),(6,'중국'),(8,'일본')]:
+        r=destrows.get(country)
+        rate=number(destination.val(r,'G')) if r is not None else None
+        goods=[]
+        for rr in range(5,60):
+            if str(top_by_dest.val(rr,'C') or '').strip()!=country:continue
+            amt=number(top_by_dest.val(rr,'H'))
+            if amt is None:continue
+            goods.append((amt,str(top_by_dest.val(rr,'D') or '').strip(),number(top_by_dest.val(rr,'I'))))
+        goods.sort(reverse=True)
+        if rate is not None and len(goods)>=3:
+            labels=', '.join((f'{nm}({i}위, 전년 동월 실적 없음)' if number(top_by_dest.val(next((rr for rr in range(5,60) if str(top_by_dest.val(rr,'C') or '').strip()==country and str(top_by_dest.val(rr,'D') or '').strip()==nm),5),'E')) in (None,0) and amount>0 else f'{nm}({i}위, {pct(pc)})') if pc is not None else f'{nm}({i}위)' for i,(amount,nm,pc) in enumerate(goods[:5],1))
+            desc=f'- [{country}] 對{country} 수출은 전년 동월 대비 {change(rate)}. 주요 품목: {labels}. {author("수출 변동 배경")}'
+        else:desc='- '+author(f'對{country} 주요 수출품목 및 변동 원인')
+        vplace(1,pos,desc)
+
+    reg=main.sheet('4_전국지자체')
+    rdata=[]
+    for r in range(5,22):
+        name=str(reg.val(r,'B') or '').strip()
+        amount=number(reg.val(r,'F')); growth=number(reg.val(r,'G'))
+        if name and amount is not None and growth is not None:rdata.append((name,amount,growth))
+    bus=next((x for x in rdata if x[0]=='부산'),None)
+    if bus and len(rdata)==17:
+        rank=1+sum(x[1]>bus[1] for x in rdata)
+        growthrank=1+sum(x[2]>bus[2] for x in rdata)
+        rtop=sorted(rdata,key=lambda x:x[2],reverse=True)[:3]
+        nat_amt=number(mainsh.val(6,'F'))
+        share=bus[1]/nat_amt*100 if nat_amt else None
+        vplace(1,18,f'ㅇ {year}년 {month}월 부산지역 수출액은 전국 17개 광역지자체 중 {rank}위 기록')
+        vplace(1,20,f'ㅇ 수출 증감률({pct(bus[2])}) 기준 전국 17개 광역지자체 중 {growthrank}위 기록')
+        vplace(1,22,'- 전국 주요 증가 지역: '+', '.join(f'{REGIONS.get(nm,nm)}({pct(rate)})' for nm,_,rate in rtop)+f'. 전국 증감률 {pct(nat_rate)}')
+        vplace(1,24,f'ㅇ 부산의 전국 수출액 비중은 {pct(share)} 기록' if share is not None else '')
+    else:
+        for pos in (18,20,22,24):vplace(1,pos,'ㅇ '+author('전국 지자체 수출 순위 및 비중'))
+    vplace(1,33,import_head)
+    if len(stage)==5 and all(nm and r is not None for nm,r in stage):
+        vplace(1,37,'ㅇ 가공단계별로 '+', '.join(f'{nm}({pct(r)})' for nm,r in stage)+' 등 5개 항목 모두 수입 증가' if all(r>=0 for _,r in stage) else 'ㅇ 가공단계별 수입은 '+', '.join(f'{nm}({pct(r)})' for nm,r in stage)+'로 나타남')
+    else:vplace(1,37,'ㅇ '+author('가공단계별 수입 변화'))
+    falling=noteworthy(top_imp,-1,2)
+    indetail='ㅇ '+', '.join(item_tag(x) for x in rise)+' 등의 수입은 증가'
+    if falling:indetail+=', '+', '.join(item_tag(x) for x in falling)+' 등은 감소'
+    vplace(1,43,indetail)
+    china_row=next((r for r in range(31,51) if str(destination.val(r,'B') or '').strip()=='중국'),None)
+    china_rate=number(destination.val(china_row,'G')) if china_row is not None else None
+    vplace(1,51,f'ㅇ 對중국 수입은 전년 동월 대비 {change(china_rate)}. {author("중국 수입품목 변동 배경")}' if china_rate is not None else '')
+    audit.note('서술형 분석은 확인 가능한 통계 문장으로 작성하고, 외부 확인이 필요한 원인·시장 해석은 [작성자 입력: ...]으로 표시합니다.')
 
 def rewrite_dates(root,year,month):
     prev_year=year-1
@@ -355,7 +632,7 @@ def main_country_totals(main):
     return [number(sh.val(row,c)) for c in ('C','F','I','O')]
 
 
-def build_tables(root0,root1,main,kstats,audit):
+def build_tables(root0,root1,main,kstats,audit,styles):
     sh=main.sheet('1_지역총괄')
     sec0=root0.xpath('//hp:tbl',namespaces=N)
     sec1=root1.xpath('//hp:tbl',namespaces=N)
@@ -376,31 +653,18 @@ def build_tables(root0,root1,main,kstats,audit):
         rows=t.xpath('./hp:tr',namespaces=N)
         item_source=main.sheet('6_품목별(MTI4)')
         items=get_mti4(item_source,trade)
-        # Top 10 take precedence; notable changes from ranks 11-20 are candidates
-        # when they displaced a lower-impact top-10 item.
-        chosen=items[:10]
-        contenders=sorted(items[10:],key=lambda x:abs(x['current']-x['previous']),reverse=True)
-        for extra in contenders[:3]:
-            if extra['current']>10000000 and abs(extra['current']-extra['previous'])>20000000:
-                worst=min(chosen,key=lambda x:abs(x['current']-x['previous']))
-                if abs(extra['current']-extra['previous'])>abs(worst['current']-worst['previous'])*1.7:
-                    chosen.remove(worst);chosen.append(extra)
-        chosen=sorted(chosen,key=lambda x:x['rank'])
-        per_group=defaultdict(list)
-        for item in chosen:per_group[item['group_code']].append(item)
-        while len(chosen)+len(per_group)>slots and chosen:
-            # Never resize the table: remove lowest-priority item; preserve an audit trail.
-            lost=max(chosen,key=lambda x:x['rank']);chosen.remove(lost)
-            per_group=defaultdict(list)
-            for item in chosen:per_group[item['group_code']].append(item)
-            audit.issue(f'표{"2" if trade=="수출" else "6"}: 고정 행 수 제한으로 {lost["name"]}({lost["rank"]}위) 미기재')
+        # IMPORTANT: exact fixed row capacity, no stale names, no guessed MTI2
+        # amount. Category placement is dynamic, not tied to last month's slots.
+        ordered=select_mti_sections(items,slots,trade)
+        chosen=[it for _,its in ordered for it in its]
+        if sum(1+len(entries) for _,entries in ordered)!=slots:
+            audit.issue(f'표{"2" if trade=="수출" else "6"}: 원본 상위20개로 고정 행 {slots}개를 전부 채울 수 없음 → 남는 칸 공란')
         stat_rec=kstats['mti2_month']['items']
-        ordered=sorted(per_group.items(),key=lambda x:min(i['rank'] for i in x[1]))
         all_rows=[]
         btotal=[number(sh.val(6 if trade=='수출' else 8,c)) for c in ('C','E','G','K')]
         for group_code,entries in ordered:
             stats=stat_rec.get(group_code)
-            nm=(stats['name'] if stats else '') if stats else ''
+            nm=stats['name'] if stats else ''
             metrics=amount_metrics(None,group_code,'mti2',trade,kstats,btotal)
             all_rows.append((nm,metrics,None))
             if any(metrics[j]=='' for j in (0,3,6,9)):
@@ -415,6 +679,11 @@ def build_tables(root0,root1,main,kstats,audit):
         for i,row in enumerate(datarows):
             nm,metrics,_=all_rows[i] if i<len(all_rows) else ('', ['']*12,None)
             set_row(row,nm,metrics,audit=audit)
+            # First-level MTI2 category rows are always pink; MTI4 white.
+            is_group=(i<len(all_rows) and not bool(re.search(r'\(\d+\)$',nm)))
+            set_row_band(row,is_group,styles)
+            for c,val in zip(cells(row)[2:],metrics):
+                set_cell_safe_spacing(c,val,styles)
         audit.note(f'표{"2" if trade=="수출" else "6"}: MTI4 당월 순위·변동액 고려 자동 후보; 최종 품목 구성 확인 권장')
 
     # 표3: 8 continents, all top-10 countries, dynamically grouped.
@@ -517,51 +786,90 @@ def build_tables(root0,root1,main,kstats,audit):
 
 
 def replace_charts(parts,main,year,month,audit):
-    # Render charts inside fixed existing image slots. If rendering is unavailable,
-    # clear them rather than leaving graphs from the previous month.
+    """Draw readable 13-month bar/line graphs at the exact template image aspect.
+
+    The first monthly data block is rows 5..40, in descending month order.
+    Never read the second chart/calculation block (the old version did).
+    """
     try:
         import matplotlib
         matplotlib.use('Agg')
         import matplotlib.pyplot as plt
         from matplotlib import font_manager
+        from matplotlib.ticker import FuncFormatter
         from PIL import Image
-        import tempfile,os
-        for font in ['Malgun Gothic','NanumGothic','Noto Sans CJK KR','AppleGothic']:
-            if any(x.name==font for x in font_manager.fontManager.ttflist):
-                plt.rcParams['font.family']=font;break
+        font_candidates=['Malgun Gothic','NanumGothic','Noto Sans CJK KR','NanumSquare','AppleGothic','UnDotum']
+        families={f.name for f in font_manager.fontManager.ttflist}
+        found=next((f for f in font_candidates if f in families),None)
+        if found:plt.rcParams['font.family']=found
+        else:plt.rcParams['font.family']='DejaVu Sans'
         plt.rcParams['axes.unicode_minus']=False
         sh=main.sheet('2_3년간월별수출입')
         points=[]
-        for r in range(5,80):
-            ym=str(sh.val(r,'B') or '')
-            if not re.match(r'^20\d\d\.\d\d$',ym):continue
-            points.append((ym,sh.val(r,'C'),sh.val(r,'D'),sh.val(r,'E'),sh.val(r,'F')))
-        points=sorted(points, key=lambda x:x[0])[-13:]
-        if len(points)<7:
-            audit.issue('월별 그래프: 데이터가 7개월 미만이라 새 그래프를 생성하지 않았습니다.')
-            return
-        for kind,imagekey,which in [('수출','BinData/image2.bmp',1),('수입','BinData/image3.bmp',3)]:
-            values=[number(p[which])/1e6 if number(p[which]) is not None else 0 for p in points]
-            rates=[number(p[which+1]) or 0 for p in points]
-            labels=[p[0][2:] for p in points]
-            fig,ax=plt.subplots(figsize=(9.3,3.25),dpi=120)
-            bar=ax.bar(range(len(values)),values,color='#4385b4',width=.64)
-            ax.set_ylabel('백만 달러',fontsize=9)
-            ax.set_xticks(list(range(len(labels))),labels,rotation=0,fontsize=8)
-            ax.set_ylim(0,max(values)*1.22 if values else 1)
-            ax.grid(axis='y',alpha=.14)
-            ax2=ax.twinx();ax2.plot(range(len(rates)),rates,color='#da7b3e',marker='o',linewidth=1.7,markersize=3)
-            ax2.set_ylabel('전년 동월 대비 (%)',fontsize=9)
-            ax2.grid(False)
-            fig.suptitle(f'부산지역 월별 {kind}액 및 증감률',fontsize=12)
-            fig.tight_layout()
-            out=io.BytesIO();fig.savefig(out,format='png',bbox_inches='tight',facecolor='white');plt.close(fig)
-            img=Image.open(io.BytesIO(out.getvalue())).convert('RGB')
-            buf=io.BytesIO();img.save(buf,format='BMP');parts[imagekey]=buf.getvalue()
-            audit.note(f'{imagekey}: 월별 원본 자료로 그래프 신규 생성')
-    except ImportError:
-        audit.issue('그래프 재작성 라이브러리(matplotlib, pillow)가 없어 기존 그래프의 정확성을 보장할 수 없습니다.')
-
+        for r in range(5,41):
+            ym=str(sh.val(r,'B') or '').strip()
+            if not re.fullmatch(r'20\d\d\.\d\d',ym):continue
+            v=(number(sh.val(r,'C')),number(sh.val(r,'D')),number(sh.val(r,'E')),number(sh.val(r,'F')))
+            if any(n is None for n in v):continue
+            points.append((ym,*v))
+        points=sorted(points,key=lambda x:x[0])[-13:]
+        if len(points)!=13:raise Reject('월별 그래프: 연속 13개월 데이터가 없어 정확한 그래프 작성 불가')
+        import datetime
+        ym_values=[datetime.datetime.strptime(p[0],'%Y.%m') for p in points]
+        if any(((b.year-a.year)*12+b.month-a.month)!=1 for a,b in zip(ym_values,ym_values[1:])):
+            raise Reject('월별 그래프의 월이 연속되지 않습니다')
+        for kind,imagekey,amount_ix,rate_ix in [('수출','BinData/image2.bmp',1,2),('수입','BinData/image3.bmp',3,4)]:
+            values=[p[amount_ix]/1000000 for p in points]
+            rates=[p[rate_ix] for p in points]
+            labels=[p[0] for p in points]
+            # Match original image size and aspect to avoid layout reflow in HWPX.
+            original=Image.open(io.BytesIO(parts[imagekey]))
+            width,height=original.size
+            fig,ax=plt.subplots(figsize=(width/95,height/95),dpi=170)
+            fig.patch.set_facecolor('white');ax.set_facecolor('white')
+            bars=ax.bar(range(13),values,width=.59,color='#4776BD',zorder=2)
+            vmax=max(values)
+            ax.set_ylim(0,vmax*1.21)
+            ax.grid(axis='y',color='#D9DEE6',linewidth=.8,zorder=0)
+            ax.spines[['top','right','left']].set_visible(False)
+            ax.spines['bottom'].set_color('#B6C0CB')
+            ax.tick_params(axis='y',labelsize=8,length=0)
+            ax.yaxis.set_major_formatter(FuncFormatter(lambda y,pos:f'{y:,.0f}'))
+            ax.set_xticks(range(13));ax.set_xticklabels(labels,rotation=38,ha='right',fontsize=7.4)
+            ax.tick_params(axis='x',length=0,pad=5)
+            # Each blue bar has a value label, like the reference HWPX charts.
+            for i,value in enumerate(values):
+                ax.annotate(f'{value:,.0f}',(i,value),xytext=(0,3),textcoords='offset points',fontsize=7.4,ha='center',color='#202832')
+            ax2=ax.twinx()
+            lo,hi=min(rates),max(rates)
+            spread=max(hi-lo,8)
+            ax2.set_ylim(lo-spread*.26,hi+spread*.29)
+            ax2.spines[['top','left','right']].set_visible(False)
+            ax2.tick_params(axis='y',length=0,labelsize=8)
+            ax2.plot(range(13),rates,color='#EE7D28',marker='s',markersize=3.6,linewidth=2,zorder=3)
+            # Label selected points to reduce overlap, but always mark current and prior month.
+            for i,r in enumerate(rates):
+                if i in (0,3,6,9,11,12):
+                    ax2.annotate(f'{r:.1f}',(i,r),textcoords='offset points',xytext=(0,-14 if i%2 else 6),
+                                 ha='center',fontsize=7.1,color='#B24D12',
+                                 bbox={'facecolor':'white','edgecolor':'none','alpha':.8,'pad':.6})
+            from matplotlib.lines import Line2D
+            from matplotlib.patches import Patch
+            lab1=f'{kind}액(좌측, 백만 달러)' if found else f'{"Exports" if kind=="수출" else "Imports"} (left, USD mn)'
+            lab2='전년동월비 증감률(우측)' if found else 'YoY growth (right, %)'
+            fig.legend([Patch(color='#4776BD'),Line2D([0],[0],color='#EE7D28',marker='s',linewidth=2)],
+                       [lab1,lab2],loc='upper center',ncol=2,frameon=False,fontsize=8.8,
+                       bbox_to_anchor=(.5,.995))
+            fig.subplots_adjust(top=.87,bottom=.22,left=.092,right=.91)
+            # No duplicate chart title: document already prints its figure caption.
+            buf=io.BytesIO();fig.savefig(buf,format='png',dpi=170,facecolor='white');plt.close(fig)
+            img=Image.open(io.BytesIO(buf.getvalue())).convert('RGB')
+            img=img.resize((width*2,height*2),Image.Resampling.LANCZOS)
+            bmp=io.BytesIO();img.save(bmp,format='BMP');parts[imagekey]=bmp.getvalue()
+            audit.note(f'{imagekey}: 연속 13개월의 {kind} 금액·전년 동월 대비율 차트 생성 (원본 이미지 비율 유지, 라벨 표시, 한글 지원 시 한글 폰트 사용)')
+    except (ImportError,Reject) as e:
+        # Never retain a graph from the prior reporting month if chart building fails.
+        raise Reject(f'월별 그래프를 검증된 자료로 작성할 수 없습니다: {e}')
 
 def validate_main_schema(main):
     # Fail closed if the association changes a table layout/column meaning.
@@ -633,12 +941,19 @@ def build_report(main_data,main_name,uploads,template_data):
         infos=z.infolist()
     roots={name:etree.fromstring(parts[name]) for name in ['Contents/section0.xml','Contents/section1.xml']}
     before=[table_signature(roots[n]) for n in roots]
-    build_tables(roots['Contents/section0.xml'],roots['Contents/section1.xml'],main,ks,audit)
+    header=etree.fromstring(parts['Contents/header.xml'])
+    styles=create_style_context(header)
+    build_tables(roots['Contents/section0.xml'],roots['Contents/section1.xml'],main,ks,audit,styles)
     fill_headline_paras(roots['Contents/section0.xml'],roots['Contents/section1.xml'],main,year,month,audit)
+    normalise_generated_body_style(roots['Contents/section0.xml'],(28,30,32,34,38,40,42,46,55,57,59,67,69,71,73,75))
+    normalise_generated_body_style(roots['Contents/section1.xml'],(2,4,6,8,18,20,22,24,33,37,43,51))
+    use_word_safe_left_align(header,roots['Contents/section0.xml'],(32,))
+    use_word_safe_left_align(header,roots['Contents/section1.xml'],(2,))
     for root in roots.values():rewrite_dates(root,year,month)
     if [table_signature(roots[n]) for n in roots]!=before:
         raise Reject('표 구조 변경 감지: 출력하지 않았습니다.')
     for name,root in roots.items():parts[name]=etree.tostring(root,encoding='UTF-8',xml_declaration=True,standalone=True)
+    parts['Contents/header.xml']=etree.tostring(header,encoding='UTF-8',xml_declaration=True,standalone=True)
     replace_charts(parts,main,year,month,audit)
     if 'Preview/PrvText.txt' in parts:
         preview=parts['Preview/PrvText.txt'].decode('utf-8',errors='replace')
