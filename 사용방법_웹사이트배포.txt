@@ -1,0 +1,39 @@
+부산지역 수출입동향 자동작성 — 웹사이트 배포용 (브라우저 이용자 Python 설치 불필요)
+==================================================================
+
+이 파일은 이미 인터넷에 배포된 웹사이트가 아닙니다. Render 같은 서버에 올리면
+웹주소로 접속해서 엑셀 업로드 → 검증 → HWPX 다운로드가 가능합니다.
+
+[가장 간단한 배포 방법: GitHub 비공개 저장소 + Render]
+1) 압축을 풀고 GitHub(https://github.com)에 비공개(Private) 저장소를 만듭니다.
+2) 이 압축 안 파일들(server.py, engine.py, xlreader.py, requirements.txt,
+   render.yaml, static/, templates/ 등)을 저장소 최상위에 올립니다.
+   * 반드시 템플릿 HWPX 파일까지 올려야 합니다.
+3) Render(https://dashboard.render.com) 가입 후 GitHub 계정을 연결합니다.
+4) New > Blueprint에서 위 비공개 저장소를 선택합니다.
+5) APP_PASSWORD에 긴 개인 비밀번호를 설정합니다. (APP_USERNAME 기본값은 report)
+6) 배포 완료 후 Render가 제공하는 https://...onrender.com 주소에 접속합니다.
+7) 브라우저가 계정과 비밀번호를 물으면 아이디 report와 5번 비밀번호 입력.
+8) 웹페이지 안내에 맞춰 엑셀 업로드 → [한글 보고서 생성하기] → 다운로드.
+
+[보안/정확성 안내]
+- 공식 보고서 승인 전 반드시 수치, 품목선정, 글자/페이지 수를 직접 검토하세요.
+- 서버에 입력 파일을 영구 저장하지 않지만 서버 운영자/호스팅 사업자는
+  서버와 통신·실행 환경을 운영합니다. 회사의 외부 업로드 정책을 확인하세요.
+- HWPX 템플릿에는 실제 과거 보고서 내용이 남아 있습니다.
+  반드시 비공개 저장소에 올리고 비밀번호를 설정하세요.
+- 다운로드 자료는 서버 메모리에 15분 동안 남고 만료되면 사라집니다.
+- 파이썬은 호스팅 서버에서 자동 설치/실행되므로 사용자의 PC에 설치할 필요 없습니다.
+- 템플릿은 2026년 10월 마지막 승인본을 바탕으로 합니다.
+- 렌더링은 한글 프로그램에서 최종 확인해야 하며 임의 숫자를 채우지 않습니다.
+
+[직접 Web Service 생성하는 경우]
+Runtime: Python
+Build Command: pip install -r requirements.txt
+Start Command: python server.py
+환경변수: CLOUD_MODE=1, APP_USERNAME=report, APP_PASSWORD=(비밀번호)
+비밀번호가 없으면 서버가 시작되지 않게 안전장치를 넣었습니다.
+
+[관련 안내]
+Render: https://render.com/docs/your-first-deploy
+Render Blueprint: https://render.com/docs/blueprint-spec

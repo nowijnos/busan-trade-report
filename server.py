@@ -1,0 +1,141 @@
+"""Password-protected cloud/web deployment for Busan trade report generator.
+
+Use HTTPS on the hosting platform. APP_PASSWORD is mandatory for cloud mode.
+Uploads and output are processed in memory; no workbook is written to disk.
+"""
+from __future__ import annotations
+import base64
+from email.parser import BytesParser
+from email import policy
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import parse_qs, urlparse, quote
+from pathlib import Path
+import json, os, time, threading, secrets, hmac
+from engine import build_report, Reject
+
+ROOT=Path(__file__).resolve().parent
+TEMPLATE=(ROOT/'templates'/'report_template.hwpx').read_bytes()
+MAX_UPLOAD=50*1024*1024
+CACHE={}
+LOCK=threading.Lock()
+CACHE_LIFETIME=15*60
+PASSWORD=os.environ.get('APP_PASSWORD','')
+USERNAME=os.environ.get('APP_USERNAME','report')
+CLOUD=os.environ.get('CLOUD_MODE','0')=='1' or bool(os.environ.get('PORT'))
+
+
+def clean_cache():
+    now=time.monotonic()
+    with LOCK:
+        for key, entry in list(CACHE.items()):
+            if now-entry['created']>CACHE_LIFETIME:
+                del CACHE[key]
+        while len(CACHE)>15:
+            CACHE.pop(next(iter(CACHE)))
+
+class Handler(BaseHTTPRequestHandler):
+    server_version='TradeReportWeb/1.1'
+    def log_message(self,fmt,*args):
+        # Avoid writing filenames, workbook contents, or private statistics into logs.
+        print('[WEB] '+fmt%args)
+    def sendbytes(self,status,content,ctype='application/octet-stream',headers=None):
+        self.send_response(status)
+        self.send_header('Content-Type',ctype)
+        self.send_header('Content-Length',str(len(content)))
+        self.send_header('Cache-Control','no-store, max-age=0')
+        self.send_header('X-Content-Type-Options','nosniff')
+        self.send_header('X-Frame-Options','DENY')
+        self.send_header('Referrer-Policy','no-referrer')
+        for k,v in (headers or {}).items(): self.send_header(k,v)
+        self.end_headers()
+        self.wfile.write(content)
+    def json(self,status,ob,headers=None):
+        self.sendbytes(status,json.dumps(ob,ensure_ascii=False).encode('utf-8'),'application/json; charset=utf-8',headers)
+    def authorized(self):
+        if not PASSWORD: return not CLOUD
+        auth=self.headers.get('Authorization','')
+        if not auth.startswith('Basic '): return False
+        try:
+            combined=base64.b64decode(auth[6:],validate=True).decode('utf-8')
+            user,passwd=combined.split(':',1)
+        except (ValueError,UnicodeError): return False
+        return hmac.compare_digest(user,USERNAME) and hmac.compare_digest(passwd,PASSWORD)
+    def check_auth(self):
+        if self.path=='/health': return True
+        if self.authorized(): return True
+        self.sendbytes(401,b'Authentication required', 'text/plain; charset=utf-8',
+                       {'WWW-Authenticate':'Basic realm="Busan-Trade-Report", charset="UTF-8"'})
+        return False
+    def do_GET(self):
+        if not self.check_auth(): return
+        path=urlparse(self.path)
+        if path.path=='/health':
+            self.json(200,{'status':'ok','version':'1.1'})
+        elif path.path=='/':
+            self.sendbytes(200,(ROOT/'static'/'index.html').read_bytes(),'text/html; charset=utf-8')
+        elif path.path=='/download':
+            clean_cache()
+            q=parse_qs(path.query);token=q.get('token',[''])[0]
+            with LOCK:result=CACHE.get(token)
+            if result is None:
+                self.json(404,{'error':'다운로드 링크가 만료됐습니다. 다시 생성해주세요.'});return
+            kind=q.get('type',['report'])[0]
+            if kind=='audit':
+                name='검증_확인사항.txt'; data=result['audit'].encode('utf-8')
+                content_type='text/plain; charset=utf-8'
+            else:
+                name=result['name'];data=result['data'];content_type='application/octet-stream'
+            self.sendbytes(200,data,content_type,{'Content-Disposition':"attachment; filename*=UTF-8''"+quote(name)})
+        else:self.json(404,{'error':'페이지를 찾을 수 없습니다'})
+    def do_POST(self):
+        if not self.check_auth(): return
+        if urlparse(self.path).path!='/generate':
+            self.json(404,{'error':'잘못된 요청'});return
+        try:size=int(self.headers.get('Content-Length','0') or 0)
+        except ValueError:size=0
+        if size<=0 or size>MAX_UPLOAD:
+            self.json(413,{'error':'업로드 용량 제한: 전체 50MB 이하입니다.'});return
+        ctype=self.headers.get('Content-Type','')
+        if 'multipart/form-data' not in ctype:
+            self.json(400,{'error':'파일 업로드 형식이 아닙니다.'});return
+        try:
+            raw=self.rfile.read(size)
+            msg=BytesParser(policy=policy.default).parsebytes(
+                b'MIME-Version: 1.0\r\nContent-Type: '+ctype.encode()+b'\r\n\r\n'+raw)
+            uploads={}
+            for part in msg.iter_parts():
+                key=part.get_param('name',header='content-disposition')
+                filename=part.get_filename()
+                if key and filename:
+                    data=part.get_payload(decode=True)
+                    if len(data)>20*1024*1024: raise Reject('개별 업로드 파일은 20MB 이하여야 합니다.')
+                    uploads.setdefault(key,[]).append((Path(filename).name,data))
+            main=uploads.pop('main',None)
+            if not main:raise Reject('기본 보고서 엑셀(.xlsx)은 필수입니다.')
+            filename,contents=main[0]
+            if not filename.lower().endswith('.xlsx'):raise Reject('기본 보고서 엑셀은 .xlsx 형식이어야 합니다.')
+            output,outname,audit,stat=build_report(contents,filename,uploads,TEMPLATE)
+            token=secrets.token_urlsafe(24)
+            clean_cache()
+            with LOCK:CACHE[token]={'created':time.monotonic(),'name':outname,'data':output,'audit':audit}
+            self.json(200,{'ok':True,'token':token,'filename':outname,
+                           'issues':stat.issues,'notes':stat.notes,
+                           'filled':stat.filled,'empty':stat.empty})
+        except Reject as exc:
+            self.json(422,{'error':str(exc)})
+        except Exception as exc:
+            print('[WEB] report generation error:',type(exc).__name__)
+            self.json(422,{'error':'보고서 생성 오류가 발생했습니다. 엑셀 형식과 조회 조건을 검토하세요.'})
+
+def run():
+    if CLOUD and not PASSWORD:
+        raise SystemExit('보안을 위해 APP_PASSWORD 환경변수를 먼저 설정하세요.')
+    port=int(os.environ.get('PORT','8765'))
+    host='0.0.0.0' if CLOUD else '127.0.0.1'
+    print('Busan Trade Report web service on',host,port,flush=True)
+    srv=ThreadingHTTPServer((host,port),Handler)
+    try:srv.serve_forever()
+    except KeyboardInterrupt:pass
+    finally:srv.server_close()
+
+if __name__=='__main__':run()
