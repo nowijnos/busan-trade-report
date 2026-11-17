@@ -188,6 +188,63 @@ def set_cell_safe_spacing(cell, value, styles):
             styles['cp_cache'][key]=clone.get('id')
         if key in styles['cp_cache']:run.set('charPrIDRef',styles['cp_cache'][key])
 
+
+def fit_table6_long_product_labels(header, root1, audit=None):
+    """Keep two MTI4 names on one line without touching table geometry.
+
+    Hancom table 6's name column is about 82pt wide. The two known longer
+    labels are 11pt in the original template and can wrap to two lines,
+    pushing the entire Table 7 notes below the page break. Clone ONLY these
+    cell-run charPr styles and use a readable 10pt font with restrained
+    negative tracking. Never shorten names, edit numerical values, or resize
+    any row/cell. Apply after MTI4 rows have been populated each month.
+    """
+    H='{http://www.hancom.co.kr/hwpml/2011/head}'
+    chars=header.find('.//'+H+'charProperties')
+    if chars is None:raise Reject('표6 품목 서식: 글자 속성 목록이 없습니다.')
+    tables=root1.xpath('//hp:tbl',namespaces=N)
+    if len(tables)!=6:raise Reject('표6 품목 서식: 표 구성 변경 감지')
+    rows=tables[4].xpath('./hp:tr',namespaces=N)
+    targets={'회전기기부분품':-18,'전동축및기어':-12}
+    found=[]
+    style_cache={}
+    next_id=max(int(x.get('id')) for x in chars)+1
+    for row in rows[3:]:
+        cc=cells(row)
+        if not cc:continue
+        label=cc[1]
+        text=get_text(label)
+        norm=re.sub(r'\(\d+\)$','',text).replace(' ','')
+        if norm not in targets:continue
+        ps=label.xpath('.//hp:p',namespaces=N)
+        if len(ps)!=1:raise Reject(f'표6 {text}: 셀에 복수 문단이 발견되어 자동 조정 중단')
+        tracking=targets[norm]
+        for run in ps[0].xpath('./hp:run[hp:t]',namespaces=N):
+            old_id=run.get('charPrIDRef')
+            if old_id is None:raise Reject('표6 품목명 글자 속성 참조가 없습니다.')
+            key=(old_id,tracking)
+            if key not in style_cache:
+                old=next((x for x in chars if x.get('id')==old_id),None)
+                if old is None:raise Reject(f'글자 서식 ID {old_id} 누락')
+                clone=deepcopy(old)
+                clone.set('id',str(next_id));next_id+=1
+                clone.set('height','1000')  # 10 pt, original is 11pt
+                spacing=clone.find(H+'spacing')
+                if spacing is None:spacing=etree.SubElement(clone,H+'spacing')
+                for lang in ('hangul','latin','hanja','japanese','other','symbol','user'):
+                    spacing.set(lang,str(tracking))
+                chars.append(clone)
+                style_cache[key]=clone.get('id')
+            run.set('charPrIDRef',style_cache[key])
+        found.append((text,tracking))
+    chars.set('itemCnt',str(len(chars)))
+    if audit is not None:
+        if found:
+            audit.note('표6 장문 품목명 1줄 표시: '+', '.join(f'{name} (10pt, 자간 {tracking}%)' for name,tracking in found)+'; 표 높이·내용 불변')
+        else:
+            audit.note('표6 장문 품목명 1줄 맞춤 대상 미등장: 기존 품목명 서식 유지')
+    return found
+
 def use_word_safe_left_align(header,root,positions):
     # Only the requested long continent descriptions are affected.
     # We clone the paragraph style rather than changing unrelated paragraphs.
@@ -270,49 +327,97 @@ def _local_tracking(header, paragraph, percent):
     for run in paragraph.xpath('./hp:run[hp:t]',namespaces=N):
         if run.get('charPrIDRef') in remap:run.set('charPrIDRef',remap[run.get('charPrIDRef')])
 
-def layout_compact_pages(header,root0,root1,audit):
-    """Fit template page groups without moving table cells.
+def _blank_paragraph_height(header, paragraph, height):
+    """Only change the size of a truly empty Enter paragraph (in 1/100 pt).
 
-    Original reference pages: cover; overview+T1; export chart;
-    MTI4 export+T2; regions text+T3; provinces+T4; import chart+T5;
-    import goods+T6+China+T7. Only gap paras and selected body lines are tuned.
-    A real Hancom pagination engine is still required for a proof of page count.
+    A line-spacing percentage by itself does not shrink an empty HWPX line:
+    the HWP engine also takes its run's font height into account. Clone the
+    run style locally, leaving all text runs and all table styles untouched.
     """
-    pages0=root0.xpath('//hp:p[not(ancestor::hp:tbl)]',namespaces=N)
-    pages1=root1.xpath('//hp:p[not(ancestor::hp:tbl)]',namespaces=N)
-    if len(pages0)!=84 or len(pages1)!=58:
-        raise Reject('기준 한글 문단 수가 달라 페이지 자동 배치의 안전한 적용을 중단했습니다.')
-    # Avoid adding hard breaks to regional section: the HWPX section boundary
-    # already starts its own layout context. Section 1 page 7 comes after T5.
-    # A break before T6 intro keeps both T6 and T7 together like Apr/May masters.
-    pages1[43].set('pageBreak','1')
-    # Existing page separators (overview/export trends/export goods/provinces/import)
-    # must remain intact.
-    for i in [24,53,65]:
-        if pages0[i].get('pageBreak')!='1':raise Reject('기준 보고서 페이지 나눔 위치가 달라졌습니다.')
-    for i in [16,31]:
-        if pages1[i].get('pageBreak')!='1':raise Reject('기준 보고서 페이지 나눔 위치가 달라졌습니다.')
-    # Reduce only empty Enter paragraphs, preserving paragraph count.
-    # The 4th and final report pages are densely populated by narrative+table(s).
-    gap_sets=[
-       (pages0,[29,31,33,39,41,43],84),             # overview: retain Table1's source notes
-       (pages1,[1,3,5,7,9,11],58),                # T3 + three country analyses, one page
-       (pages1,[44,50,52],58),                     # T6 and T7 together, no new page
-    ]
-    for group,ids,percentage in gap_sets:
-        for i in ids:
-            p=group[i]
-            if get_text(p).strip():continue
-            _line_page_style(header,p,line_pct=percentage)
-    # Keep multi-line paragraphs intact; adjust line height locally rather than font size.
-    for i in (2,4,6,8):
-        _line_page_style(header,pages1[i],line_pct=137,keep_lines=True)
-    _line_page_style(header,pages1[43],line_pct=130,keep_lines=True)
-    _line_page_style(header,pages1[51],line_pct=135,keep_lines=True)
-    for i in (4,6,8):_local_tracking(header,pages1[i],-8)
-    # Last-page table comment labels remain in the same page, no changes to table geom.
-    audit.note('페이지 배치: 표3+대륙·국가 설명, 표6+표7을 각각 한 페이지에 유지하도록 국소 빈 문단/줄 간격·국가설명 자간을 조정; 수치·행/열·셀 크기 불변')
-    audit.note('주의: 한글 실제 페이지 수와 하단 여백은 서버에서 렌더링 검증하지 못하므로 한컴오피스에서 최종 확인 필요')
+    if get_text(paragraph) or paragraph.xpath('.//hp:tbl', namespaces=N):
+        return False
+    H='{http://www.hancom.co.kr/hwpml/2011/head}'
+    properties=header.find('.//'+H+'charProperties')
+    if properties is None:return False
+    first_id=max(int(x.get('id')) for x in properties)+1
+    cache={}
+    for run in paragraph.xpath('./hp:run',namespaces=N):
+        old_id=run.get('charPrIDRef')
+        if old_id is None:continue
+        if old_id not in cache:
+            original=next((x for x in properties if x.get('id')==old_id),None)
+            if original is None:continue
+            clone=deepcopy(original)
+            clone.set('id',str(first_id));first_id+=1
+            clone.set('height',str(height))
+            properties.append(clone)
+            cache[old_id]=clone.get('id')
+        if old_id in cache:run.set('charPrIDRef',cache[old_id])
+    properties.set('itemCnt',str(len(properties)))
+    return bool(cache)
+
+
+def layout_compact_pages(header,root0,root1,audit):
+    """V8: preserve v7 page compaction and shorten two Table 6 wrapped labels.
+
+    The overview stays at baseline geometry so Table 1 and its notes fit.
+    Continent narrative + Table 3, and Table 6 + Table 7, get tighter blank
+    Enter lines and regular body line spacing to reduce overflow. This cannot
+    prove a final page count without Hancom's proprietary pagination engine.
+    """
+    p0=root0.xpath('//hp:p[not(ancestor::hp:tbl)]',namespaces=N)
+    p1=root1.xpath('//hp:p[not(ancestor::hp:tbl)]',namespaces=N)
+    if (len(p0),len(p1))!=(84,58):
+        raise Reject('기준 한글 문단 수가 달라 페이지 배치 보정을 중단했습니다.')
+    for idx in (24,53,65):
+        if p0[idx].get('pageBreak')!='1':raise Reject('기존 페이지 경계가 변경되어 중단합니다.')
+    for idx in (16,31):
+        if p1[idx].get('pageBreak')!='1':raise Reject('기존 페이지 경계가 변경되어 중단합니다.')
+    # The two import product tables follow the import chart and processing table.
+    # Preserve the explicit start of the final report page.
+    p1[43].set('pageBreak','1')
+
+    # 1. Overview / Table 1: restore the PROVEN v4 spacing profile.
+    #    V5 enlarged eight blank paragraphs before Table1 to 12pt /145%,
+    #    sending the table onto the next page. The v4 baseline instead uses
+    #    84%-line spacing on just six existing blank separators. Keep 35 and 45
+    #    untouched and keep the table/caption/notes completely unchanged.
+    for idx in (29,31,33,39,41,43):
+        if get_text(p0[idx]) or p0[idx].xpath('.//hp:tbl',namespaces=N):
+            raise Reject('개황 빈 문단 구조가 달라 표1 위치 복원 중단')
+        _line_page_style(header,p0[idx],line_pct=84)
+
+    # 2. Continent/three-country commentary+표3. Tighten empty Enter space,
+    #    not the table cells. Do not turn Hangul into break-inside-word mode.
+    for idx in (1,3,5,7,9,11):
+        if not get_text(p1[idx]):
+            _blank_paragraph_height(header,p1[idx],450)   # 4.5 pt
+            _line_page_style(header,p1[idx],line_pct=78)
+    for idx in (2,4,6,8):
+        _line_page_style(header,p1[idx],line_pct=108,keep_lines=True)
+    for idx in (4,6,8):_local_tracking(header,p1[idx],-13)
+    # Caption and notes: local vertical spacing, wording unchanged.
+    for idx in (10,12,14,15):
+        _line_page_style(header,p1[idx],line_pct=94)
+
+    # 3. Last page/표6+표7: v7 micro-compaction. In v6 the final
+    #    '주2 : 증감률은 ...' moved to the next printed page in Hancom.
+    #    Reserve approximately one extra full note line by reducing ONLY
+    #    existing paragraph line/blank spacings on the final report page.
+    #    Do not modify fonts, text, table height, rows, columns or cell margins.
+    for idx in (44,50,52):
+        if get_text(p1[idx]) or p1[idx].xpath('.//hp:tbl',namespaces=N):
+            raise Reject('표7 주석 간격 조정용 빈 문단 구조 변경 감지: 안전하게 중단')
+        _blank_paragraph_height(header,p1[idx],140)  # 1.4 pt (v6: 4.5 pt)
+        _line_page_style(header,p1[idx],line_pct=68)
+    for idx in (43,51):
+        _line_page_style(header,p1[idx],line_pct=96,keep_lines=True)
+    for idx in (45,46,48,49,53,54,56,57):
+        _line_page_style(header,p1[idx],line_pct=86)
+
+    audit.note('v7 마지막 페이지: 표6·표7 사이 기존 빈 문단 3곳의 높이와 마지막 페이지 문단 줄간격만 국소 축소, 주2가 표7과 같은 페이지에 머물도록 공간 확보 (본문·표·수치·글자크기 변경 없음)')
+    audit.note('1페이지 개황은 v6에서 복원한 위치와 서식을 그대로 유지하고, 표3도 v6 설정 유지')
+    audit.note('HWPX XML과 ZIP을 검증하더라도 한컴오피스의 실제 페이지 나눔은 직접 열어 확인해야 합니다.')
 
 def from_main(sheet,row):
     # Row layout: previous month CDE, current month FGH, previous YTD IJK,
@@ -393,7 +498,7 @@ def read_kstat(data,name):
         tot['cy_'+side]=number(sh.val(5,cur_col))
     return Kstat(meta,yy,mm,interval,level,'국가 : 중국' in meta,result,tot,name)
 
-def concat_kstats(inputs,year,month,audit):
+def concat_kstats(inputs,year,month,audit,china_expected_totals=None):
     # named groups with explicit validation; labels do not control interpretation.
     groups={}
     expected={
@@ -416,7 +521,36 @@ def concat_kstats(inputs,year,month,audit):
             if found!=expect:
                 audit.issue(f'{key}/{name}: 조회 조건 불일치. 기대={expect} / 실제={found} → 미반영')
                 continue
+            # The K-Stat export may display '국가: 중국' in the header yet
+            # contain Busan ALL-country trade. The user's 2025-10 old (6).xls
+            # is exactly this case. Validate the actual total, not only labels.
+            if key.startswith('china_') and china_expected_totals is not None:
+                idx={'china_month':1,'china_prior':2,'china_current':3}[key]
+                expected_amount=china_expected_totals[idx]
+                got=k.total.get('cy_import')
+                if expected_amount is not None and got is not None:
+                    if got > expected_amount + 1:
+                        audit.issue(f'{key}/{name}: 중국 수입 합계 불일치 ({got:,.0f}달러 > 확인된 중국 총계 {expected_amount:,.0f}달러). 잘못 조회된 자료 → 제외')
+                        continue
+                    # Smaller subtotals are permitted only as *additional*
+                    # targeted MTI code lookups, never as a replacement for
+                    # the full-China cumulative source.
+                    if got < expected_amount - 1:
+                        if got > expected_amount * 0.25:
+                            audit.issue(f'{key}/{name}: 중국 수입 소계 ({got:,.0f}달러)가 전체 실적 ({expected_amount:,.0f}달러)과 크게 달라 확인 필요 → 제외')
+                            continue
+                        audit.note(f'{key}/{name}: 중국 수입 전체 조회가 아닌 부분 품목 보충 조회로 처리 (소계 {got:,.0f}달러)')
             parts.append(k)
+        if key.startswith('china_') and china_expected_totals is not None and parts:
+            idx={'china_month':1,'china_prior':2,'china_current':3}[key]
+            want=china_expected_totals[idx]
+            if want is not None:
+                full=[k for k in parts if k.total.get('cy_import') is not None and abs(k.total['cy_import']-want)<=1]
+                if full:
+                    full_names={id(k) for k in full}
+                    parts=full+[k for k in parts if id(k) not in full_names]
+                else:
+                    audit.issue(f'{key}: 중국 전체 총계가 일치하는 기본 K-Stat 조회 파일 없음; 추가 조회 값만으로 확인되는 코드에 한해 작성')
         merged={};total=None
         for k in parts:
             if total is None:total=k.total
@@ -489,6 +623,267 @@ def set_p_by_prefix(root,prefix,value,audit):
     elif matches:audit.note(f'본문 {prefix} 위치가 {len(matches)}개라 자동 입력하지 않았습니다.')
 
 
+def choose_import_commentary(imports):
+    """Choose fact-supported import product mentions in the historical report style.
+
+    Historical monthly originals (Mar, Apr, May, Sep 2026) first discuss current
+    MTI4 ranking 1..5 where meaningful, then occasionally a 6..10 ranked item
+    with an unusually large *absolute* rate and material dollar movement.
+    The same item never appears in both increased and decreased sets.
+    This selection is for prose ONLY; table row allocation remains unchanged.
+    """
+    eligible=[x for x in imports if x['rank']<=20 and x['current']>0 and x['rate'] is not None]
+    def material(x):
+        return x['current']>=8_000_000 and abs(x['current']-x['previous'])>=3_000_000
+    top5=[x for x in eligible if x['rank']<=5]
+    special=[x for x in eligible if 5<x['rank']<=10 and material(x) and abs(x['rate'])>=150]
+    union=top5+sorted(special,key=lambda x:(-abs(x['current']-x['previous']),x['rank']))
+    # Do not call a 0.1% fluctuation a major import driver.
+    rises=[x for x in union if x['rate']>=5.0]
+    falls=[x for x in union if x['rate']<-.05]
+    # If five leading ranks are one-sided, include the most material opposite
+    # change from the top 10 only if supported by meaningful absolute movement.
+    if not falls:
+        extra=next((x for x in eligible if x['rank']<=10 and x['rate']<-5 and material(x)),None)
+        if extra and extra not in union:falls.append(extra)
+    if not rises:
+        extra=next((x for x in eligible if x['rank']<=10 and x['rate']>5 and material(x)),None)
+        if extra and extra not in union:rises.append(extra)
+    # Keep material 100%+ growth within the five leading MTI4 ranks even
+    # when three smaller-change items precede it. Example: October imports
+    # rank 5 batteries (+748.5%) rather than rank 3 car parts (+39.7%).
+    priority=[x for x in rises if x['rank']<=5 and x['rate']>=100 and material(x)]
+    priority=sorted(priority,key=lambda x:x['rank'])
+    candidates=priority+[x for x in sorted(rises,key=lambda x:x['rank']) if x not in priority]
+    rises=sorted(candidates[:3],key=lambda x:x['rank'])
+    falls=sorted(falls,key=lambda x:x['rank'])[:3]
+    # A single standout change can be mentioned in the overview, but don't
+    # label rank-high / tiny-dollar percent outliers as the main driver.
+    highlights=[x for x in rises if material(x)]
+    highlight=max(highlights,key=lambda x:abs(x['current']-x['previous']),default=None)
+    if highlight is None and rises:highlight=rises[0]
+    return {'rises':rises,'falls':falls,'highlight':highlight,
+            'new':[x for x in top5 if x['previous']==0 and x['current']>0]}
+
+
+def make_import_mti_sentence(items, author):
+    """Exactly monthly import MTI4 ranks 1-5; rises before falls.
+
+    Preserve the historical `item(rank)(growth) ...의 수입은 증가, ...의
+    수입은 감소` grammar. Never include rank 6+ just to invent an opposite
+    direction, and do not silently classify missing data as a fall.
+    """
+    top5=sorted([x for x in items if 1<=x['rank']<=5],key=lambda x:x['rank'])
+    if len(top5)!=5 or sorted(x['rank'] for x in top5)!=[1,2,3,4,5]:
+        return 'ㅇ '+author('수입금액 상위 1~5위 품목 확인 요망')
+    if any(x['rate'] is None for x in top5):
+        return 'ㅇ '+author('수입금액 상위 1~5위 증감률 확인 요망')
+    def tag(x):return f'{x["name"]}{x["rank"]}위({fpct(x["rate"])}%)'
+    def clause(records,verb):
+        if not records:return ''
+        return ', '.join(tag(x) for x in records)+f'의 수입은 {verb}'
+    inc=[x for x in top5 if x['rate']>0]
+    dec=[x for x in top5 if x['rate']<0]
+    flat=[x for x in top5 if x['rate']==0 and x['previous']>0]
+    new_items=[x for x in top5 if x['rate']==0 and x['previous']==0 and x['current']>0]
+    # The source may encode the previous-month zero denominator as 0.0%;
+    # this does NOT mean 'unchanged'. Describe the new occurrence accurately.
+    new_clause=', '.join(f'{x["name"]}{x["rank"]}위' for x in new_items)+'의 신규 수입 발생' if new_items else ''
+    parts=[clause(inc,'증가'),clause(dec,'감소'),clause(flat,'변동 없음'),new_clause]
+    return 'ㅇ '+', '.join(x for x in parts if x)
+
+
+def format_import_rank_superscript(header, root1, audit):
+    """Apply original Sep HWPX 'Alt+Shift+P' upper-script to only N위 tokens.
+
+    The reference report uses charPr=69 for text (14pt, -10% tracking)
+    and charPr=72 for N위 (<hh:supscript/>). Keep the existing paragraph,
+    table geometry, and pagination. No manual line breaks inside words.
+    """
+    ps=root1.xpath('//hp:p[not(ancestor::hp:tbl)]',namespaces=N)
+    if len(ps)!=58:raise Reject('기존 수입 해설 문단 수가 변경되어 위첨자 서식을 적용하지 않았습니다.')
+    p=ps[43]
+    text=get_text(p)
+    if not text.startswith('ㅇ ') or '의 수입은 ' not in text:
+        # When source figures were not verified, no rank should be faked.
+        if '[작성자 입력' in text:return
+        raise Reject('수입 품목 설명 문장의 구조가 기존 양식과 다릅니다.')
+    tokens=re.split(r'(\d{1,2}위)(?=\(|의|,)' ,text)
+    if ''.join(tokens)!=text:raise Reject('수입 품목 순위 위첨자 분리 중 문자 불일치')
+    charprops=header.find('.//{http://www.hancom.co.kr/hwpml/2011/head}charProperties')
+    if charprops is None:raise Reject('글자 서식 목록이 없습니다.')
+    styles={x.get('id'):x for x in charprops}
+    if '69' not in styles or '72' not in styles or styles['72'].find('{http://www.hancom.co.kr/hwpml/2011/head}supscript') is None:
+        raise Reject('기존 보고서의 순위 위첨자 서식이 없습니다.')
+    # The template has 13 existing runs with one hp:t each. Reuse those runs,
+    # preserve all structural siblings and avoid adding new empty paragraphs.
+    runs=p.xpath('./hp:run[hp:t]',namespaces=N)
+    if len(runs)<len(tokens):raise Reject('수입 설명 글자 구간 수가 부족합니다.')
+    for i,run in enumerate(runs):
+        ts=run.xpath('./hp:t',namespaces=N)
+        if not ts:continue
+        chunk=tokens[i] if i<len(tokens) else ''
+        for t in ts:
+            for child in list(t):t.remove(child)
+            t.text=''
+        ts[0].text=chunk
+        run.set('charPrIDRef','72' if i<len(tokens) and re.fullmatch(r'\d{1,2}위',chunk) else '69')
+    if get_text(p)!=text:raise Reject('수입 품목 순위 서식 변경으로 문장 손실')
+    sup=[r for r in runs if r.get('charPrIDRef')=='72' and get_text(r)]
+    if len(sup)!=len(re.findall(r'\d{1,2}위(?=\(|의|,)' ,text)):
+        raise Reject('순위 위첨자 글자 구간 수 불일치')
+    audit.note(f'표6 상단 설명: 당월 MTI4 수입액 상위 1~5위, 증가 먼저·감소 이후. 순위 위첨자 {len(sup)}곳은 기존 9월 완성본과 동일한 글자 서식(72) 적용')
+
+
+
+def format_destination_rank_superscript(header, root1, audit):
+    """Style *only* MTI4 rank tokens in US/China/Japan export prose.
+
+    Historical September reports use genuine HWPX <hh:supscript/> for '1위',
+    '2위', etc. Keep each country's original 14pt base font/tracking,
+    paragraph spacing, existing runs, text, and table geometry untouched.
+    Only rewrite run boundaries to isolate rank tokens and add cloned
+    superscript character styles. This works for dynamically changing items.
+    """
+    ps=root1.xpath('//hp:p[not(ancestor::hp:tbl)]',namespaces=N)
+    if len(ps)!=58:
+        raise Reject('대륙별 수출동향 문단 수가 원본과 달라 위첨자를 적용하지 않았습니다.')
+    charprops=header.find('.//{%s}charProperties' % HH)
+    if charprops is None:
+        raise Reject('HWPX 글자 서식 목록이 없어 순위 위첨자를 적용하지 않았습니다.')
+    props_by_id={cp.get('id'):cp for cp in charprops}
+    next_id=max(int(i) for i in props_by_id if i is not None and i.isdigit())+1
+    total=0
+    for index,country in [(4,'미국'),(6,'중국'),(8,'일본')]:
+        p=ps[index]
+        source=get_text(p)
+        if not source:
+            continue
+        if not source.startswith(f'- [{country}] 對{country} 수출은'):
+            raise Reject(f'{country} 수출 해설 문장 위치가 기존 양식과 달라 적용을 중단했습니다.')
+        chunks=re.split(r'(\d{1,2}위)(?=\(|,|\s|의|$)',source)
+        if ''.join(chunks)!=source:
+            raise Reject(f'{country} 설명 순위 분리 중 문자 일치 실패')
+        count=sum(1 for token in chunks if re.fullmatch(r'\d{1,2}위',token))
+        if count==0:
+            continue
+        runs=p.xpath('./hp:run[hp:t]',namespaces=N)
+        if len(runs)<len(chunks):
+            raise Reject(f'{country} 수출 해설의 기존 글자 구간이 부족해 적용하지 않았습니다.')
+        base_id=runs[0].get('charPrIDRef')
+        base=props_by_id.get(base_id)
+        if base is None:
+            raise Reject(f'{country} 수출 해설의 기본 글자 서식을 찾을 수 없습니다.')
+        sup_style=deepcopy(base)
+        sup_style.set('id',str(next_id))
+        if sup_style.find('{%s}supscript' % HH) is None:
+            etree.SubElement(sup_style,'{%s}supscript' % HH)
+        charprops.append(sup_style)
+        sup_id=str(next_id)
+        next_id+=1
+        # Only use existing hp:run elements; preserve hp:p and its children count.
+        for i,run in enumerate(runs):
+            tt=run.xpath('./hp:t',namespaces=N)
+            if not tt:
+                continue
+            for t in tt:
+                for child in list(t):t.remove(child)
+                t.text=''
+            token=chunks[i] if i<len(chunks) else ''
+            tt[0].text=token
+            run.set('charPrIDRef',sup_id if re.fullmatch(r'\d{1,2}위',token) else base_id)
+        if get_text(p)!=source:
+            raise Reject(f'{country} 수출 설명이 위첨자 처리로 변경되었습니다.')
+        actual=sum(1 for run in runs if run.get('charPrIDRef')==sup_id and get_text(run))
+        if actual!=count:
+            raise Reject(f'{country} 수출 품목 순위 위첨자 수가 일치하지 않습니다.')
+        total+=actual
+    charprops.set('itemCnt',str(len(charprops)))
+    audit.note(f'대륙별 수출동향의 미국·중국·일본 품목 순위 {total}곳을 위첨자(Alt+Shift+P)로 표시. 기존 문장·수치·서식 간격·표 구조 유지')
+
+
+
+def _narrative_visual_width(text):
+    """Conservative, font-independent width guard for short Hangul prose.
+
+    Full-width Korean syllables take one unit, ASCII punctuation/digits roughly
+    half. A deliberate line break is added only at an editorial clause boundary,
+    never between syllables of a Korean word. This is an estimate, not a Hancom
+    render of the page.
+    """
+    import unicodedata
+    return sum(1 if unicodedata.east_asian_width(ch) in ('W','F') else .55 for ch in text)
+
+
+def _overview_continent_lines(regions):
+    """Follow the Mar/Apr/May/Sep overview style, using two concise clauses.
+
+    The old v14 glued 4+4 destinations with middle dots into a very long
+    sentence, which Hancom split inside '아프리카'. Keep comma+space-separated
+    proper names and line-break between complete *clauses*. No data is added
+    or inferred. Choose a minority-contrast sentence for 5+/3- months.
+    """
+    if len(regions)!=8 or any(v is None for v in regions.values()):return None
+    rising=[n for n,v in regions.items() if v>0]
+    falling=[n for n,v in regions.items() if v<0]
+    flat=[n for n,v in regions.items() if v==0]
+    if flat:
+        # An exact 0.0% is neither growth nor decline. Keep the summary
+        # short rather than listing too many locations and splitting a name.
+        return (f'- 대륙별 수출은 {len(rising)}개 지역 증가, {len(falling)}개 지역 감소,',
+                f'{len(flat)}개 지역은 전년 동월과 같은 수준')
+    if rising and falling and len(rising)<=4 and len(falling)<=4:
+        # The strongest positive-region YoY rate, when it fits, adds the
+        # concrete highlight commonly used in finished historical reports.
+        best=max(rising,key=lambda nm:regions[nm])
+        highlighted=[f'{n}({fpct(regions[n])}%)' if n==best else n for n in rising]
+        high='- 대륙별로 '+', '.join(highlighted)+' 수출 증가,'
+        simple='- 대륙별로 '+', '.join(rising)+' 수출 증가,'
+        first=high if _narrative_visual_width(high)<=30.5 else simple
+        second=', '.join(falling)+' 수출 감소'
+        return first,second
+    if falling and len(falling)<=3 and rising:
+        # The historical '...을 제외하고' sentence can conceal whether the
+        # excluded locations fell or stayed flat. Here the sign is explicit.
+        first='- 대륙별로 '+', '.join(falling)+' 수출은 감소,'
+        second='그 외 지역에서는 수출 증가'
+        return first,second
+    if rising and len(rising)<=3 and falling:
+        first='- 대륙별로 '+', '.join(rising)+' 수출은 증가,'
+        second='그 외 지역에서는 수출 감소'
+        return first,second
+    if rising:
+        best=max(rising,key=lambda nm:regions[nm])
+        return ('- 대륙별로 모든 지역에서 수출 증가,',
+                f'{best}({fpct(regions[best])}%)의 증가율이 가장 높음')
+    if falling:
+        return ('- 대륙별로 모든 지역에서 수출 감소', '')
+    return ('- 대륙별 수출 증감 없음', '')
+
+
+def _set_safe_overview_lines(paragraph, lines):
+    """Use a real HWPX soft-line break after a complete phrase.
+
+    Only the existing overview paragraph is changed; its paragraph style,
+    run styles, paragraph count, table contents and page-break flags remain.
+    HWPX newlines must be hp:lineBreak, not a literal '\n' in hp:t.
+    """
+    first,second=lines
+    if not first or _narrative_visual_width(first)>32.5:
+        raise Reject('개황 대륙별 첫 문장이 너무 길어 자동 줄 배치를 중단합니다.')
+    if second and _narrative_visual_width(second)>32.5:
+        raise Reject('개황 대륙별 둘째 문장이 너무 길어 자동 줄 배치를 중단합니다.')
+    set_text(paragraph,first + (' '+second if second else ''))
+    if second:
+        elem=paragraph.xpath('./hp:run/hp:t',namespaces=N)[0]
+        elem.text=first
+        line_break=etree.SubElement(elem,Q('lineBreak'))
+        line_break.tail=' '+second
+    # Ensure the generated textual words did not silently disappear.
+    plain=get_text(paragraph)
+    assert plain==first + (' '+second if second else ''),plain
+    return plain
+
 def fill_headline_paras(root0,root1,main,year,month,audit):
     """Rewrite *existing* paragraphs with verified facts or conspicuous author prompts.
 
@@ -520,8 +915,13 @@ def fill_headline_paras(root0,root1,main,year,month,audit):
         # not an empty paragraph or an inferred figure.
         target=paras[side].get(index)
         if target is None:raise Reject(f'템플릿 본문 위치가 달라졌습니다: {side}/{index}')
-        value=value or f'ㅇ {author("통계 조회 및 서술 확인")}'
-        set_text(target,value)
+        if (side,index) in ((0,32),(1,2)) and isinstance(value,tuple):
+            value=_set_safe_overview_lines(target,value)
+            location='개황' if side==0 else '대륙별 수출동향'
+            audit.note(f'{location}: 주요 수치 보존, 쉼표 구분 및 HWPX 실제 줄바꿈 1곳으로 어절 중간 잘림 방지 (기존 두 줄 배치)')
+        else:
+            value=value or f'ㅇ {author("통계 조회 및 서술 확인")}'
+            set_text(target,value)
         if '[작성자 입력' in value:
             audit.issue(f'본문 {"수출/개황" if side==0 else "수출입 분석"} 문단 {index}: 작성자 검토 문구 포함')
         if len(value)>145:
@@ -556,13 +956,11 @@ def fill_headline_paras(root0,root1,main,year,month,audit):
         geo+=f'({biggest[0]} {change(biggest[1])})'
     else:geo='- '+author('대륙별 수출 증감률 확인')
     if len(regions)==8 and all(v is not None for v in regions.values()):
-        rising=[n for n,v in regions.items() if v>=0]
-        falling_geo=[n for n,v in regions.items() if v<0]
-        biggest=max(regions.items(),key=lambda kv:abs(kv[1]))
-        overview='- 대륙별로 '+ '·'.join(rising)+'에서 수출 증가'
-        if falling_geo:overview+=', '+ '·'.join(falling_geo)+'에서는 감소'
-        overview+=f'({biggest[0]} {change(biggest[1])})'
-        vplace(0,32,overview)
+        # A maximum of two short editor-constructed clauses replaces a
+        # glued 8-continent enumeration. Explicit break occurs only BETWEEN
+        # phrases, not inside any individual Korean word such as 아프리카.
+        overview_lines=_overview_continent_lines(regions)
+        vplace(0,32,overview_lines)
     else:vplace(0,32,geo)
     if exp_rate is not None and nat_rate is not None:
         compared='높은' if exp_rate>nat_rate else '낮은' if exp_rate<nat_rate else '동일한'
@@ -573,16 +971,28 @@ def fill_headline_paras(root0,root1,main,year,month,audit):
     vplace(0,38,import_head)
     st=main.sheet('10_가공단계')
     stage=[(str(st.val(r,'B') or '').strip(),number(st.val(r,'G'))) for r in range(16,21)]
-    if len(stage)==5 and all(nm and r is not None for nm,r in stage):
-        pos=[f'{nm}({pct(v)})' for nm,v in stage if v>=0]
-        neg=[f'{nm}({pct(v)})' for nm,v in stage if v<0]
-        txt='- 가공단계별 수입은 '+', '.join(pos)+' 증가'
-        if neg:txt+=', '+', '.join(neg)+' 감소'
-    else:txt='- '+author('가공단계별 수입실적 확인')
-    vplace(0,40,txt)
-    rise=noteworthy(top_imp,1,3)
-    txt=('ㅇ 주요 수입 품목 중 '+', '.join(item_tag(x) for x in rise)+' 증가. '+author('수입 증가 배경') if rise else '')
-    vplace(0,42,txt)
+    # Import overview: match the older March/April/May/September finished reports.
+    # Mention actual up/down MTI4 items, not the processing-stage percentages.
+    imp_story = choose_import_commentary(imports)
+    if imp_story['rises'] or imp_story['falls']:
+        named_up=', '.join(x['name'] for x in imp_story['rises'][:2])
+        named_down=', '.join(x['name'] for x in imp_story['falls'][:2])
+        if named_up and named_down:
+            overview_import=f'- {named_up} 등의 수입은 증가한 반면, {named_down} 등의 수입은 감소'
+        elif named_up:
+            overview_import=f'- {named_up} 등 주요 품목의 수입 증가'
+        else:
+            overview_import=f'- {named_down} 등 주요 품목의 수입 감소'
+        vplace(0,40,overview_import)
+        key_import=imp_story['highlight']
+        if key_import and key_import['rate'] is not None:
+            movement=change(key_import['rate'])
+            vplace(0,42,f'ㅇ {key_import["name"]} 수입은 전년 동월 대비 {movement}하며 주요 수입품목 중 {key_import["rank"]}위 기록')
+        else:
+            vplace(0,42,'ㅇ '+author('주요 수입 품목의 증감 확인'))
+    else:
+        vplace(0,40,'- '+author('주요 수입품목의 증가·감소 확인'))
+        vplace(0,42,'ㅇ '+author('주요 수입품목 변동 확인'))
     vplace(0,46,trade_head)
 
     # Section0: export trend, month-on-month, notable MTI4 product descriptions.
@@ -643,7 +1053,11 @@ def fill_headline_paras(root0,root1,main,year,month,audit):
     for pos in (69,71,73,75)[len(featured):]:vplace(0,pos,'- '+author('주요 수출 품목 분석'))
 
     # Section1: continents, top destinations, national region comparison, imports.
-    vplace(1,2,'ㅇ '+geo.lstrip('- '))
+    if len(regions)==8 and all(v is not None for v in regions.values()):
+        geo_lines=_overview_continent_lines(regions)
+        vplace(1,2,('ㅇ '+geo_lines[0].lstrip('- '),geo_lines[1]))
+    else:
+        vplace(1,2,'ㅇ '+geo.lstrip('- '))
     destination=main.sheet('8_국가')
     destrows={str(destination.val(r,'B') or '').strip():r for r in range(5,25)}
     top_by_dest=main.sheet('13_국가별상위10대수출품목(MTI4)')
@@ -658,8 +1072,37 @@ def fill_headline_paras(root0,root1,main,year,month,audit):
             goods.append((amt,str(top_by_dest.val(rr,'D') or '').strip(),number(top_by_dest.val(rr,'I'))))
         goods.sort(reverse=True)
         if rate is not None and len(goods)>=3:
-            labels=', '.join((f'{nm}({i}위, 전년 동월 실적 없음)' if number(top_by_dest.val(next((rr for rr in range(5,60) if str(top_by_dest.val(rr,'C') or '').strip()==country and str(top_by_dest.val(rr,'D') or '').strip()==nm),5),'E')) in (None,0) and amount>0 else f'{nm}({i}위, {pct(pc)})') if pc is not None else f'{nm}({i}위)' for i,(amount,nm,pc) in enumerate(goods[:5],1))
-            desc=f'- [{country}] 對{country} 수출은 {labels} 등을 중심으로 전년 동월 대비 {change(rate)}'
+            ranks=[]
+            for i,(amount,nm,pc) in enumerate(goods[:5],1):
+                prior_row=next((rr for rr in range(5,60) if
+                               str(top_by_dest.val(rr,'C') or '').strip()==country and
+                               str(top_by_dest.val(rr,'D') or '').strip()==nm),None)
+                previous=number(top_by_dest.val(prior_row,'E')) if prior_row is not None else None
+                if previous in (None,0) and amount>0:
+                    ranks.append((f'{nm}{i}위(전년 동월 실적 없음)',1))
+                elif pc is not None:
+                    ranks.append((f'{nm}{i}위({pct(pc)})',1 if pc>=0 else -1))
+                else:
+                    ranks.append((f'{nm}{i}위',0))
+            inc=[label for label,sgn in ranks if sgn>0]
+            dec=[label for label,sgn in ranks if sgn<0]
+            # Preserve the original report's [국가] subject -> concrete
+            # MTI4 ranking -> up/down contrast -> total YoY rate structure.
+            if inc and dec:
+                if rate>=0:
+                    desc=(f'- [{country}] 對{country} 수출은 '+', '.join(dec[:2])+
+                          ' 등의 감소에도 '+', '.join(inc[:4])+
+                          f' 등을 중심으로 전년 동월 대비 {change(rate)}')
+                else:
+                    desc=(f'- [{country}] 對{country} 수출은 '+', '.join(inc[:3])+
+                          ' 등의 증가에도 '+', '.join(dec[:3])+
+                          f' 등의 감소로 전년 동월 대비 {change(rate)}')
+            elif inc:
+                desc=(f'- [{country}] 對{country} 수출은 '+', '.join(inc[:5])+
+                      f' 등을 중심으로 전년 동월 대비 {change(rate)}')
+            else:
+                desc=(f'- [{country}] 對{country} 수출은 '+', '.join(dec[:5])+
+                      f' 등의 영향으로 전년 동월 대비 {change(rate)}')
         else:desc='- '+author(f'對{country} 주요 수출품목 및 변동 원인')
         vplace(1,pos,desc)
 
@@ -678,21 +1121,38 @@ def fill_headline_paras(root0,root1,main,year,month,audit):
         share=bus[1]/nat_amt*100 if nat_amt else None
         vplace(1,18,f'ㅇ {year}년 {month}월 부산지역 수출액은 전국 17개 광역지자체 중 {rank}위 기록')
         vplace(1,20,f'ㅇ 수출 증감률({pct(bus[2])}) 기준 전국 17개 광역지자체 중 {growthrank}위 기록')
-        vplace(1,22,'- 전국 주요 증가 지역: '+', '.join(f'{REGIONS.get(nm,nm)}({pct(rate)})' for nm,_,rate in rtop)+f'. 전국 증감률 {pct(nat_rate)}')
-        vplace(1,24,f'ㅇ 부산의 전국 수출액 비중은 {pct(share)} 기록' if share is not None else '')
+        vplace(1,22,'- '+', '.join(f'{REGIONS.get(nm,nm).replace("경기(남부)","경기 남부").replace("경기(북부)","경기 북부")}({pct(rate)})' for nm,_,rate in rtop)+f' 등에서 수출이 증가하며 전국 수출 증감률은 {pct(nat_rate)} 기록')
+        # Finished reports end the regional section with the YTD rank, not
+        # an abrupt one-line national-share observation.
+        totals_ytd=[(str(reg.val(r,'B') or '').strip(),number(reg.val(r,'O'))) for r in range(5,22)]
+        bus_ytd=next((amt for nm,amt in totals_ytd if nm=='부산'),None)
+        if bus_ytd is not None and all(nm and amt is not None for nm,amt in totals_ytd):
+            ytd_rank=1+sum(amt>bus_ytd for nm,amt in totals_ytd)
+            vplace(1,24,f'ㅇ {year}년 1~{month}월 부산지역 수출액은 전국 광역지자체 중 {ytd_rank}위 기록')
+        else:
+            vplace(1,24,'ㅇ '+author('부산지역 누계 수출액 기준 전국 순위 확인'))
     else:
         for pos in (18,20,22,24):vplace(1,pos,'ㅇ '+author('전국 지자체 수출 순위 및 비중'))
     vplace(1,33,import_head)
+    # Ⅲ 수입 동향: source reports follow the fixed sequence
+    # 총액/그림2 → 가공단계별 증감/표5 → MTI4 증감/표6 → 대중국 수입/표7.
+    # Use no arbitrary bold/red, no inferred market causes, no extra paragraphs.
     if len(stage)==5 and all(nm and r is not None for nm,r in stage):
-        vplace(1,37,'ㅇ 가공단계별로 '+', '.join(f'{nm}({pct(r)})' for nm,r in stage)+' 등 5개 항목 모두 수입 증가' if all(r>=0 for _,r in stage) else 'ㅇ 가공단계별 수입은 '+', '.join(f'{nm}({pct(r)})' for nm,r in stage)+'로 나타남')
-    else:vplace(1,37,'ㅇ '+author('가공단계별 수입 변화'))
-    falling=noteworthy(top_imp,-1,2)
-    indetail='ㅇ '+', '.join(item_tag(x) for x in rise)+' 등의 수입은 증가'
-    if falling:indetail+=', '+', '.join(item_tag(x) for x in falling)+' 등은 감소'
-    vplace(1,43,indetail)
+        positive=[f'{nm}({pct(r)})' for nm,r in stage if r>=0]
+        negative=[f'{nm}({pct(r)})' for nm,r in stage if r<0]
+        if positive and negative:
+            stage_sentence='ㅇ 가공단계별 수입은 '+', '.join(positive)+'는 증가하였으나, '+', '.join(negative)+' 수입은 감소함'
+        elif positive:
+            stage_sentence='ㅇ 가공단계별 수입은 '+', '.join(positive)+' 등 모든 부문에서 증가함'
+        else:
+            stage_sentence='ㅇ 가공단계별 수입은 '+', '.join(negative)+' 등 모든 부문에서 감소함'
+        vplace(1,37,stage_sentence)
+    else:
+        vplace(1,37,'ㅇ '+author('가공단계별 수입 증감 확인'))
+    vplace(1,43,make_import_mti_sentence(imports,author))
     china_row=next((r for r in range(31,51) if str(destination.val(r,'B') or '').strip()=='중국'),None)
     china_rate=number(destination.val(china_row,'G')) if china_row is not None else None
-    vplace(1,51,f'ㅇ 對중국 수입은 전년 동월 대비 {change(china_rate)}. {author("중국 수입품목 변동 배경")}' if china_rate is not None else '')
+    vplace(1,51,f'ㅇ 對중국 수입은 전년 동월 대비 {change(china_rate)}' if china_rate is not None else 'ㅇ '+author('對중국 수입 증감률 확인'))
     audit.note('서술형 분석은 확인 가능한 통계 문장으로 작성하고, 외부 확인이 필요한 원인·시장 해석은 [작성자 입력: ...]으로 표시합니다.')
 
 def rewrite_dates(root,year,month):
@@ -997,7 +1457,12 @@ def build_report(main_data,main_name,uploads,template_data):
     validate_main_schema(main)
     year,month=make_month_info(main)
     if not (2018<=year<=2040):raise Reject('허용되지 않은 보고서 연도')
-    ks=concat_kstats(uploads,year,month,audit)
+    # Strict source authentication for China import: compare K-Stat export
+    # amounts against the China row in the main report, per matched period.
+    # Metadata alone is insufficient (incorrect K-Stat exports can retain the
+    # old '국가 : 중국' header after a query is changed).
+    china_expected_totals=main_country_totals(main)
+    ks=concat_kstats(uploads,year,month,audit,china_expected_totals)
     totals=main.sheet('1_지역총괄')
     for key,field,valcol in [
         ('mti2_month','cy_export','E'),('mti2_current','cy_export','K'),('mti2_prior','cy_export','G'),
@@ -1038,12 +1503,15 @@ def build_report(main_data,main_name,uploads,template_data):
     header=etree.fromstring(parts['Contents/header.xml'])
     styles=create_style_context(header)
     build_tables(roots['Contents/section0.xml'],roots['Contents/section1.xml'],main,ks,audit,styles)
+    fit_table6_long_product_labels(header,roots['Contents/section1.xml'],audit)
     fill_headline_paras(roots['Contents/section0.xml'],roots['Contents/section1.xml'],main,year,month,audit)
     normalise_generated_body_style(roots['Contents/section0.xml'],(28,30,32,34,38,40,42,46,55,57,59,67,69,71,73,75))
     normalise_generated_body_style(roots['Contents/section1.xml'],(2,4,6,8,18,20,22,24,33,37,43,51))
     use_word_safe_left_align(header,roots['Contents/section0.xml'],(32,))
     use_word_safe_left_align(header,roots['Contents/section1.xml'],(2,))
     layout_compact_pages(header,roots['Contents/section0.xml'],roots['Contents/section1.xml'],audit)
+    format_import_rank_superscript(header,roots['Contents/section1.xml'],audit)
+    format_destination_rank_superscript(header,roots['Contents/section1.xml'],audit)
     for root in roots.values():rewrite_dates(root,year,month)
     if [table_signature(roots[n]) for n in roots]!=before:
         raise Reject('표 구조 변경 감지: 출력하지 않았습니다.')
