@@ -225,6 +225,95 @@ def normalise_generated_body_style(root, positions):
         for run in p.xpath('./hp:run[hp:t]',namespaces=N):
             run.set('charPrIDRef','47')  # 14pt regular black, 0 tracking
 
+def _line_page_style(header, paragraph, *, line_pct=None, keep_lines=False):
+    """Only local paragraph spacing & keep-lines, on a clone of original style.
+
+    The template carries two HWPX compatibility line-spacing representations;
+    update both. Paragraph/node count and font point sizes remain unchanged.
+    """
+    H='{http://www.hancom.co.kr/hwpml/2011/head}'
+    props=header.find('.//'+H+'paraProperties')
+    if props is None:return
+    oldid=paragraph.get('paraPrIDRef')
+    old=next((pr for pr in props if pr.get('id')==oldid),None)
+    if old is None:return
+    clone=deepcopy(old)
+    clone.set('id',str(max(int(pr.get('id')) for pr in props)+1))
+    if line_pct is not None:
+        for el in clone.iter(H+'lineSpacing'):
+            if el.get('type')=='PERCENT':el.set('value',str(line_pct))
+    if keep_lines:
+        br=clone.find(H+'breakSetting')
+        if br is not None:
+            br.set('keepLines','1')
+            br.set('widowOrphan','1')
+    props.append(clone);props.set('itemCnt',str(len(props)))
+    paragraph.set('paraPrIDRef',clone.get('id'))
+
+def _local_tracking(header, paragraph, percent):
+    """Compress only glyph tracking of designated country prose; no font-size change."""
+    H='{http://www.hancom.co.kr/hwpml/2011/head}'
+    chars=header.find('.//'+H+'charProperties')
+    if chars is None:return
+    ids={r.get('charPrIDRef') for r in paragraph.xpath('./hp:run[hp:t]',namespaces=N)}
+    remap={}
+    for oldid in ids:
+        old=next((cp for cp in chars if cp.get('id')==oldid),None)
+        if old is None:continue
+        clone=deepcopy(old)
+        clone.set('id',str(max(int(cp.get('id')) for cp in chars)+1))
+        spacing=clone.find(H+'spacing')
+        if spacing is not None:
+            for k in spacing.attrib:spacing.set(k,str(percent))
+        chars.append(clone);remap[oldid]=clone.get('id')
+    chars.set('itemCnt',str(len(chars)))
+    for run in paragraph.xpath('./hp:run[hp:t]',namespaces=N):
+        if run.get('charPrIDRef') in remap:run.set('charPrIDRef',remap[run.get('charPrIDRef')])
+
+def layout_compact_pages(header,root0,root1,audit):
+    """Fit template page groups without moving table cells.
+
+    Original reference pages: cover; overview+T1; export chart;
+    MTI4 export+T2; regions text+T3; provinces+T4; import chart+T5;
+    import goods+T6+China+T7. Only gap paras and selected body lines are tuned.
+    A real Hancom pagination engine is still required for a proof of page count.
+    """
+    pages0=root0.xpath('//hp:p[not(ancestor::hp:tbl)]',namespaces=N)
+    pages1=root1.xpath('//hp:p[not(ancestor::hp:tbl)]',namespaces=N)
+    if len(pages0)!=84 or len(pages1)!=58:
+        raise Reject('기준 한글 문단 수가 달라 페이지 자동 배치의 안전한 적용을 중단했습니다.')
+    # Avoid adding hard breaks to regional section: the HWPX section boundary
+    # already starts its own layout context. Section 1 page 7 comes after T5.
+    # A break before T6 intro keeps both T6 and T7 together like Apr/May masters.
+    pages1[43].set('pageBreak','1')
+    # Existing page separators (overview/export trends/export goods/provinces/import)
+    # must remain intact.
+    for i in [24,53,65]:
+        if pages0[i].get('pageBreak')!='1':raise Reject('기준 보고서 페이지 나눔 위치가 달라졌습니다.')
+    for i in [16,31]:
+        if pages1[i].get('pageBreak')!='1':raise Reject('기준 보고서 페이지 나눔 위치가 달라졌습니다.')
+    # Reduce only empty Enter paragraphs, preserving paragraph count.
+    # The 4th and final report pages are densely populated by narrative+table(s).
+    gap_sets=[
+       (pages0,[29,31,33,39,41,43],84),             # overview: retain Table1's source notes
+       (pages1,[1,3,5,7,9,11],58),                # T3 + three country analyses, one page
+       (pages1,[44,50,52],58),                     # T6 and T7 together, no new page
+    ]
+    for group,ids,percentage in gap_sets:
+        for i in ids:
+            p=group[i]
+            if get_text(p).strip():continue
+            _line_page_style(header,p,line_pct=percentage)
+    # Keep multi-line paragraphs intact; adjust line height locally rather than font size.
+    for i in (2,4,6,8):
+        _line_page_style(header,pages1[i],line_pct=137,keep_lines=True)
+    _line_page_style(header,pages1[43],line_pct=130,keep_lines=True)
+    _line_page_style(header,pages1[51],line_pct=135,keep_lines=True)
+    for i in (4,6,8):_local_tracking(header,pages1[i],-8)
+    # Last-page table comment labels remain in the same page, no changes to table geom.
+    audit.note('페이지 배치: 표3+대륙·국가 설명, 표6+표7을 각각 한 페이지에 유지하도록 국소 빈 문단/줄 간격·국가설명 자간을 조정; 수치·행/열·셀 크기 불변')
+    audit.note('주의: 한글 실제 페이지 수와 하단 여백은 서버에서 렌더링 검증하지 못하므로 한컴오피스에서 최종 확인 필요')
+
 def from_main(sheet,row):
     # Row layout: previous month CDE, current month FGH, previous YTD IJK,
     # current YTD OPQ (previous ANNUAL LMN is intentionally ignored).
@@ -433,7 +522,7 @@ def fill_headline_paras(root0,root1,main,year,month,audit):
         if target is None:raise Reject(f'템플릿 본문 위치가 달라졌습니다: {side}/{index}')
         value=value or f'ㅇ {author("통계 조회 및 서술 확인")}'
         set_text(target,value)
-        if '[작성자 입력:' in value:
+        if '[작성자 입력' in value:
             audit.issue(f'본문 {"수출/개황" if side==0 else "수출입 분석"} 문단 {index}: 작성자 검토 문구 포함')
         if len(value)>145:
             audit.note(f'본문 문단 {index}: 설명문 길이 {len(value)}자, 한컴 페이지/줄바꿈 확인 필요')
@@ -458,8 +547,13 @@ def fill_headline_paras(root0,root1,main,year,month,audit):
     if len(regions)==8 and all(v is not None for v in regions.values()):
         positive=[f'{nm}({pct(val)})' for nm,val in regions.items() if val>=0]
         negative=[f'{nm}({pct(val)})' for nm,val in regions.items() if val<0]
-        geo='- 대륙별 수출은 '+', '.join(positive)+'에서 증가'
-        if negative:geo+=', '+', '.join(negative)+'에서 감소'
+        # Original editorial style: concise group names, strongest verified rate.
+        increasing=[nm for nm,val in regions.items() if val>=0]
+        decreasing=[nm for nm,val in regions.items() if val<0]
+        biggest=max(regions.items(),key=lambda item:abs(item[1]))
+        geo='- 대륙별로 '+ '·'.join(increasing)+'에서 수출 증가'
+        if decreasing:geo+=', '+ '·'.join(decreasing)+'에서는 감소'
+        geo+=f'({biggest[0]} {change(biggest[1])})'
     else:geo='- '+author('대륙별 수출 증감률 확인')
     if len(regions)==8 and all(v is not None for v in regions.values()):
         rising=[n for n,v in regions.items() if v>=0]
@@ -545,7 +639,7 @@ def fill_headline_paras(root0,root1,main,year,month,audit):
         if rec not in featured:featured.append(rec)
     for pos,rec in zip((69,71,73,75),featured):
         clause=f'- [{rec["name"]}] 전년 동월 대비 {change(rec["rate"])}하며 당월 수출금액 {rec["rank"]}위 기록' if rec['rate'] is not None else f'- [{rec["name"]}] '+author('증감률 확인')
-        vplace(0,pos,clause+'. '+author('국가별 실적 및 변동 원인'))
+        vplace(0,pos,clause+' [작성자 입력 : 상세내용 확인 요망]')
     for pos in (69,71,73,75)[len(featured):]:vplace(0,pos,'- '+author('주요 수출 품목 분석'))
 
     # Section1: continents, top destinations, national region comparison, imports.
@@ -565,7 +659,7 @@ def fill_headline_paras(root0,root1,main,year,month,audit):
         goods.sort(reverse=True)
         if rate is not None and len(goods)>=3:
             labels=', '.join((f'{nm}({i}위, 전년 동월 실적 없음)' if number(top_by_dest.val(next((rr for rr in range(5,60) if str(top_by_dest.val(rr,'C') or '').strip()==country and str(top_by_dest.val(rr,'D') or '').strip()==nm),5),'E')) in (None,0) and amount>0 else f'{nm}({i}위, {pct(pc)})') if pc is not None else f'{nm}({i}위)' for i,(amount,nm,pc) in enumerate(goods[:5],1))
-            desc=f'- [{country}] 對{country} 수출은 전년 동월 대비 {change(rate)}. 주요 품목: {labels}. {author("수출 변동 배경")}'
+            desc=f'- [{country}] 對{country} 수출은 {labels} 등을 중심으로 전년 동월 대비 {change(rate)}'
         else:desc='- '+author(f'對{country} 주요 수출품목 및 변동 원인')
         vplace(1,pos,desc)
 
@@ -949,6 +1043,7 @@ def build_report(main_data,main_name,uploads,template_data):
     normalise_generated_body_style(roots['Contents/section1.xml'],(2,4,6,8,18,20,22,24,33,37,43,51))
     use_word_safe_left_align(header,roots['Contents/section0.xml'],(32,))
     use_word_safe_left_align(header,roots['Contents/section1.xml'],(2,))
+    layout_compact_pages(header,roots['Contents/section0.xml'],roots['Contents/section1.xml'],audit)
     for root in roots.values():rewrite_dates(root,year,month)
     if [table_signature(roots[n]) for n in roots]!=before:
         raise Reject('표 구조 변경 감지: 출력하지 않았습니다.')
