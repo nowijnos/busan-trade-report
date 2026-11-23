@@ -1365,6 +1365,48 @@ def build_tables(root0,root1,main,kstats,audit,styles):
         if len(name)>11:audit.note(f'표7 {name}: 긴 품목명은 한글에서 두 줄/자간 검수 필요')
 
 
+def resolve_korean_plot_font(font_manager):
+    """Find a font with Korean glyphs, explicitly registering dependency font.
+
+    A font family being named 'NanumGothic' is not proof that it really
+    contains Hangul. Test glyph coverage using Matplotlib's FreeType wrapper.
+    This function never copies or distributes a font with the application.
+    """
+    from matplotlib.ft2font import FT2Font
+    from pathlib import Path
+
+    def suitable(path):
+        try:
+            ft=FT2Font(str(path))
+            return all(ft.get_char_index(ord(ch)) for ch in '한글수출입률')
+        except (ValueError, OSError, RuntimeError):
+            return False
+
+    # koreanize-matplotlib ships NanumGothic inside the pip-installed package.
+    # Some matplotlib cache states do not index its runtime-registered family;
+    # explicitly register the font file as well as importing the package.
+    try:
+        import koreanize_matplotlib
+        package_root=Path(koreanize_matplotlib.__file__).resolve().parent
+        packaged_font=package_root/'fonts'/'NanumGothic.ttf'
+        if packaged_font.is_file() and suitable(packaged_font):
+            font_manager.fontManager.addfont(str(packaged_font))
+            return font_manager.FontProperties(fname=str(packaged_font)).get_name()
+    except (ImportError, OSError, RuntimeError, ValueError):
+        pass
+
+    # Fallback for servers where Noto CJK/Nanum is installed system-wide.
+    preferred=('NanumGothic','Noto Sans CJK KR','NanumBarunGothic',
+               'Malgun Gothic','AppleGothic','Noto Sans CJK JP')
+    fonts=list(font_manager.fontManager.ttflist)
+    fonts.sort(key=lambda f:(preferred.index(f.name) if f.name in preferred
+                             else len(preferred), f.name))
+    for font in fonts:
+        if suitable(font.fname):
+            return font.name
+    return None
+
+
 def replace_charts(parts,main,year,month,audit):
     """Draw readable 13-month bar/line graphs at the exact template image aspect.
 
@@ -1378,18 +1420,17 @@ def replace_charts(parts,main,year,month,audit):
         from matplotlib import font_manager
         from matplotlib.ticker import FuncFormatter
         from PIL import Image
-        # Use the Korean font registered by koreanize-matplotlib on Render, or
-        # a known installed Korean family when developing locally. Never fall
-        # back to English graph legends; missing fonts are an actionable error.
-        try:
-            import koreanize_matplotlib  # automatically registers NanumGothic
-        except ImportError:
-            pass
-        families={f.name for f in font_manager.fontManager.ttflist}
-        candidates=['NanumGothic','Malgun Gothic','Noto Sans CJK KR','NanumBarunGothic','NanumSquare','AppleGothic','UnDotum']
-        found=next((name for name in candidates if name in families),None)
+        # Server fonts vary across Render builds. Prefer the NanumGothic
+        # bundled inside the declared koreanize-matplotlib Python dependency;
+        # explicitly register and validate real Hangul glyph coverage.
+        # This never switches graph labels to English or reuses old-month charts.
+        found = resolve_korean_plot_font(font_manager)
         if not found:
-            raise Reject('서버에 한글 그래프 글꼴이 없습니다. requirements.txt의 koreanize-matplotlib 설치 여부를 확인하세요.')
+            raise Reject(
+                '서버에 한글 그래프 글꼴이 없습니다. Render의 Build Command가 '
+                '`pip install -r requirements.txt`인지 확인한 뒤 Clear build cache & deploy 하세요. '
+                'koreanize-matplotlib 패키지가 실제로 설치되어야 합니다.'
+            )
         plt.rcParams['font.family']=found
         plt.rcParams['axes.unicode_minus']=False
         sh=main.sheet('2_3년간월별수출입')
