@@ -1352,11 +1352,19 @@ def replace_charts(parts,main,year,month,audit):
         from matplotlib import font_manager
         from matplotlib.ticker import FuncFormatter
         from PIL import Image
-        font_candidates=['Malgun Gothic','NanumGothic','Noto Sans CJK KR','NanumSquare','AppleGothic','UnDotum']
+        # Use the Korean font registered by koreanize-matplotlib on Render, or
+        # a known installed Korean family when developing locally. Never fall
+        # back to English graph legends; missing fonts are an actionable error.
+        try:
+            import koreanize_matplotlib  # automatically registers NanumGothic
+        except ImportError:
+            pass
         families={f.name for f in font_manager.fontManager.ttflist}
-        found=next((f for f in font_candidates if f in families),None)
-        if found:plt.rcParams['font.family']=found
-        else:plt.rcParams['font.family']='DejaVu Sans'
+        candidates=['NanumGothic','Malgun Gothic','Noto Sans CJK KR','NanumBarunGothic','NanumSquare','AppleGothic','UnDotum']
+        found=next((name for name in candidates if name in families),None)
+        if not found:
+            raise Reject('서버에 한글 그래프 글꼴이 없습니다. requirements.txt의 koreanize-matplotlib 설치 여부를 확인하세요.')
+        plt.rcParams['font.family']=found
         plt.rcParams['axes.unicode_minus']=False
         sh=main.sheet('2_3년간월별수출입')
         points=[]
@@ -1409,8 +1417,10 @@ def replace_charts(parts,main,year,month,audit):
                                  bbox={'facecolor':'white','edgecolor':'none','alpha':.8,'pad':.6})
             from matplotlib.lines import Line2D
             from matplotlib.patches import Patch
-            lab1=f'{kind}액(좌측, 백만 달러)' if found else f'{"Exports" if kind=="수출" else "Imports"} (left, USD mn)'
-            lab2='전년동월비 증감률(우측)' if found else 'YoY growth (right, %)'
+            lab1=f'{kind}액(좌측)'
+            lab2='전년동월비 증감률(우측)'
+            ax.text(-.09,1.025,'(백만 달러)',transform=ax.transAxes,fontsize=8,ha='left',va='bottom')
+            ax2.text(1.065,1.025,'(%)',transform=ax2.transAxes,fontsize=8,ha='right',va='bottom')
             fig.legend([Patch(color='#4776BD'),Line2D([0],[0],color='#EE7D28',marker='s',linewidth=2)],
                        [lab1,lab2],loc='upper center',ncol=2,frameon=False,fontsize=8.8,
                        bbox_to_anchor=(.5,.995))
@@ -1451,6 +1461,38 @@ def validate_main_schema(main):
     if e0 is not None and e1 is not None and abs(e0-e1)>1:
         raise Reject('가공단계 수입 합계와 지역총괄 수입 합계가 다릅니다. 서식/시트 변경 확인이 필요합니다.')
 
+def require_core_kstat_rows(main,kstats):
+    """Protect core MTI2 group totals and China top-five periods from blank rows.
+
+    The website must request another export if a top-N K-Stat file omitted a
+    category. Never fill a missing category with a guessed amount or the
+    previous month's value. This does not modify table geometry or styling.
+    """
+    source=main.sheet('6_품목별(MTI4)')
+    missing=[]
+    for trade,slots in [('수출',16),('수입',17)]:
+        grouped=select_mti_sections(get_mti4(source,trade),slots,trade)
+        req={code for code,_ in grouped}
+        field='export' if trade=='수출' else 'import'
+        for key,period in [('mti2_month','당월'),('mti2_current','금년누계'),('mti2_prior','전년누계')]:
+            for code in sorted(req):
+                rec=kstats[key]['items'].get(code)
+                if not rec or rec.get('cy_'+field) is None:
+                    missing.append(f'{trade} MTI2 {code} / {period}')
+    current=kstats['china_month']['items']
+    top=sorted(((code,record) for code,record in current.items() if record),
+               key=lambda item:-(item[1].get('cy_import') or 0))[:5]
+    if len(top)<5:missing.append('중국 수입 MTI3 당월 상위 5개')
+    for code,_ in top:
+        for key,period in [('china_month','당월'),('china_current','금년누계'),('china_prior','전년누계')]:
+            row=kstats[key]['items'].get(code)
+            if not row or row.get('cy_import') is None:
+                missing.append(f'중국 수입 MTI3 {code} / {period}')
+    if missing:
+        raise Reject('필수 품목 실적이 엑셀 목록에서 누락되었습니다: '+', '.join(missing[:12])+
+                     (' 외 '+str(len(missing)-12)+'건' if len(missing)>12 else '')+
+                     '. K-Stat에서 100개씩 보기를 선택해 재다운로드하거나 해당 코드의 추가 조회 파일을 확인하세요. 빈 숫자를 임의로 채우지 않습니다.')
+
 def build_report(main_data,main_name,uploads,template_data):
     audit=Audit()
     main=load_excel(main_data,main_name)
@@ -1463,6 +1505,7 @@ def build_report(main_data,main_name,uploads,template_data):
     # old '국가 : 중국' header after a query is changed).
     china_expected_totals=main_country_totals(main)
     ks=concat_kstats(uploads,year,month,audit,china_expected_totals)
+    require_core_kstat_rows(main,ks)
     totals=main.sheet('1_지역총괄')
     for key,field,valcol in [
         ('mti2_month','cy_export','E'),('mti2_current','cy_export','K'),('mti2_prior','cy_export','G'),

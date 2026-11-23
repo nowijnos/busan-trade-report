@@ -19,8 +19,17 @@ import json, os, socket, hashlib
 from engine import Reject, read_kstat, make_month_info, main_country_totals
 from xlreader import load_excel, number
 
+# The reporter consumes six logical period groups; MTI2 now needs two
+# different sorted downloads per period to cover both export and import items.
 EXPECTED_KEYS=('mti2_month','mti2_current','mti2_prior',
                'china_month','china_current','china_prior')
+REQUIRED_SOURCES=(
+ 'mti2_exp_month','mti2_exp_current','mti2_exp_prior',
+ 'mti2_imp_month','mti2_imp_current','mti2_imp_prior',
+ 'china_month','china_current','china_prior',
+)
+SOURCE_TO_ENGINE={k:('mti2_'+k.rsplit('_',1)[1] if k.startswith('mti2_') else k) for k in REQUIRED_SOURCES}
+SORT_FOR_SOURCE={k:('수출금액' if k.startswith('mti2_exp_') else '수입금액') for k in REQUIRED_SOURCES}
 MAX_BRIDGE_DOWNLOAD=12*1024*1024
 MAX_MEMBER=8*1024*1024
 MAX_MEMBERS=30
@@ -32,9 +41,12 @@ def period_for_main(main_data: bytes, main_name: str):
 
 def requirements(year,month):
     return {
-        'mti2_month':(2,False,year,month,'당월'),
-        'mti2_current':(2,False,year,month,'누계'),
-        'mti2_prior':(2,False,year-1,month,'누계'),
+        'mti2_exp_month':(2,False,year,month,'당월'),
+        'mti2_exp_current':(2,False,year,month,'누계'),
+        'mti2_exp_prior':(2,False,year-1,month,'누계'),
+        'mti2_imp_month':(2,False,year,month,'당월'),
+        'mti2_imp_current':(2,False,year,month,'누계'),
+        'mti2_imp_prior':(2,False,year-1,month,'누계'),
         'china_month':(3,True,year,month,'당월'),
         'china_current':(3,True,year,month,'누계'),
         'china_prior':(3,True,year-1,month,'누계'),
@@ -43,7 +55,7 @@ def requirements(year,month):
 def _expected_totals(main,key):
     s=main.sheet('1_지역총괄')
     if key.startswith('mti2'):
-        col={'mti2_month':'E','mti2_current':'K','mti2_prior':'G'}[key]
+        col={'month':'E','current':'K','prior':'G'}[key.rsplit('_',1)[1]]
         return number(s.val(6,col)),number(s.val(8,col))
     return None, main_country_totals(main)[{'china_month':1,'china_prior':2,'china_current':3}[key]]
 
@@ -85,7 +97,9 @@ def classify(named_files,main_data,main_name,require_complete=False):
     """
     main,year,month=period_for_main(main_data,main_name)
     expected=requirements(year,month)
-    by_meta={tuple(v):key for key,v in expected.items()}
+    # Metadata also contains a sort label, essential to avoid mistaking the
+    # export top-N list for the import top-N list of the same period.
+    by_meta={(tuple(v), SORT_FOR_SOURCE[key]):key for key,v in expected.items()}
     result=defaultdict(list)
     warnings=[]
     fingerprints=set()
@@ -99,9 +113,11 @@ def classify(named_files,main_data,main_name,require_complete=False):
             warnings.append(f'{name}: K-Stat 원본 판독 불가 ({str(exc)[:140]})')
             continue
         marker=(stat.level,stat.is_china,stat.year,stat.month,stat.interval)
-        key=by_meta.get(marker)
+        sort_match=__import__('re').search(r'정렬\s*:\s*(수출금액|수입금액)',stat.meta)
+        source_sort=sort_match.group(1) if sort_match else None
+        key=by_meta.get((marker,source_sort))
         if not key:
-            warnings.append(f'{name}: 보고기간·MTI·국가 조건이 다르므로 제외')
+            warnings.append(f'{name}: 보고기간·MTI·국가·정렬 조건이 다르므로 제외 (수출·수입 정렬 확인)')
             continue
         exp_export,exp_import=_expected_totals(main,key)
         got_export=stat.total.get('cy_export')
@@ -119,22 +135,26 @@ def classify(named_files,main_data,main_name,require_complete=False):
                 warnings.append(f'{name}: 중국 수입 총계가 일치하지 않아 제외')
                 continue
         result[key].append((name,data))
-    missing=[x for x in EXPECTED_KEYS if not result[x]]
+    missing=[x for x in REQUIRED_SOURCES if not result[x]]
     if require_complete:
-        for key in EXPECTED_KEYS:
+        for key in REQUIRED_SOURCES:
             rows=result[key]
-            if not rows:continue
+            if not rows or not key.startswith('china_'):continue
             _e,expected_import=_expected_totals(main,key)
-            if key.startswith('china_'):
-                if not any(read_kstat(data,name).total.get('cy_import') is not None and
-                           expected_import is not None and
-                           abs(read_kstat(data,name).total['cy_import']-expected_import)<=1
-                           for name,data in rows):
-                    missing.append(key+'(중국 전체 총계 원본)')
+            if not any(read_kstat(data,name).total.get('cy_import') is not None and
+                       expected_import is not None and
+                       abs(read_kstat(data,name).total['cy_import']-expected_import)<=1
+                       for name,data in rows):
+                missing.append(key+'(중국 전체 총계 원본)')
         if missing:
-            raise Reject('자동수집 자료 누락 또는 총계 불일치: '+', '.join(dict.fromkeys(missing))+
-                         '. 잘못된 수치로 보고서를 생성하지 않았습니다.')
-    return dict(result),warnings,missing,(year,month)
+            raise Reject('K-Stat 필수 자료 9종 중 누락 또는 합계 불일치: '+', '.join(dict.fromkeys(missing))+
+                         '. 수출·수입 정렬과 조회기간을 확인하세요.')
+    # The established report engine expects 6 logical groups. Export/import
+    # MTI2 files from the same period are merged BY CODE by that engine.
+    combined=defaultdict(list)
+    for source_key,files in result.items():
+        combined[SOURCE_TO_ENGINE[source_key]].extend(files)
+    return dict(combined),warnings,missing,(year,month)
 
 def integration_status():
     url=os.environ.get('KSTAT_CONNECTOR_URL','').strip()
@@ -153,7 +173,7 @@ def fetch_approved_connector(year:int,month:int):
     if not status['available']:raise Reject(status['reason']+' K-Stat 일괄 업로드를 이용해 주세요.')
     url=os.environ['KSTAT_CONNECTOR_URL'].strip()
     body=json.dumps({'year':year,'month':month,'region':'부산',
-                     'requested_datasets':list(EXPECTED_KEYS)},ensure_ascii=False).encode('utf-8')
+                     'requested_datasets':list(REQUIRED_SOURCES)},ensure_ascii=False).encode('utf-8')
     headers={'Content-Type':'application/json; charset=utf-8','Accept':'application/zip',
              'User-Agent':'BusanTradeReporter/16'}
     token=os.environ.get('KSTAT_CONNECTOR_TOKEN','').strip()

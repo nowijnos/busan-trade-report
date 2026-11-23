@@ -1,0 +1,24 @@
+부산지역 수출입동향 자동작성 v28 · GitHub 교체용
+
+먼저 ZIP 압축을 풀어주세요.
+1. https://github.com/nowjinos/busan-trade-report 저장소를 여세요.
+2. 이 ZIP 내부 파일들을 같은 경로로 덮어쓰기/추가하세요.
+   engine.py, kstat_collect.py, server.py, requirements.txt, static/ 전체(안내이미지 포함).
+3. 기존 xlreader.py와 templates/report_template.hwpx는 수정·삭제하지 마세요.
+   기존 한글 템플릿의 ZIP·표 구조는 원본 그대로입니다.
+4. Commit changes 후 Render 배포 성공 여부를 확인하세요.
+5. 기존 크롬 도우미를 비활성화하고 v28 새 ZIP을 설치하세요.
+   chrome://extensions 에서 압축 해제한 kstat_chrome_v28 폴더를 선택합니다.
+6. K-Stat 탭을 새로고침하세요. 기존 v27이 삽입한 안내 상자가 남는 일을 방지합니다.
+7. 보고서 사이트 /guide와 /report 페이지에서 설명과 업로드 9개를 확인합니다.
+
+필요한 K-Stat 다운로드 9개: 수출 MTI2 당월/금년누계/전년누계,
+수입 MTI2 당월/금년누계/전년누계, 중국 수입 MTI3 당월/금년누계/전년누계.
+서버는 XLS A2의 정렬(수출금액/수입금액)·기간·지역·MTI·총계를 검증합니다.
+그림에는 사용자가 제공한 실제 Chrome/K-Stat 화면 일부를 인용하고 있습니다.
+
+그래프 한글화: requirements.txt의 koreanize-matplotlib 패키지가 Render 빌드 중 설치되어야 합니다.
+글꼴이 없으면 영어 그래프로 대체하지 않고 오류로 알려줍니다.
+
+테스트: 2026년 10월 원본 기반 파일 분류 9종·HWPX 생성 및 표 구조 동일 확인.
+실제 사내 K-Stat의 새 수입 정렬 파일 3개와 Render 배포는 사용 환경에서 다시 확인해야 합니다.

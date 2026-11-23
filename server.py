@@ -12,7 +12,7 @@ from urllib.parse import parse_qs, urlparse, quote
 from pathlib import Path
 import json, os, time, threading, secrets, hmac
 from engine import build_report, Reject
-from kstat_collect import integration_status, fetch_approved_connector, classify, unpack_zip, period_for_main, EXPECTED_KEYS
+from kstat_collect import integration_status, fetch_approved_connector, classify, unpack_zip, period_for_main, EXPECTED_KEYS, REQUIRED_SOURCES
 
 ROOT=Path(__file__).resolve().parent
 TEMPLATE=(ROOT/'templates'/'report_template.hwpx').read_bytes()
@@ -84,10 +84,10 @@ class Handler(BaseHTTPRequestHandler):
             if not item.is_file() or base not in item.parents:
                 self.json(404,{'error':'파일을 찾을 수 없습니다.'});return
             ext=item.suffix.lower()
-            mime={'.svg':'image/svg+xml','.png':'image/png','.webp':'image/webp','.zip':'application/zip','.css':'text/css','.js':'text/javascript'}.get(ext)
+            mime={'.svg':'image/svg+xml','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.zip':'application/zip','.css':'text/css','.js':'text/javascript'}.get(ext)
             if not mime:
                 self.json(404,{'error':'지원하지 않는 파일입니다.'});return
-            extra={'Content-Disposition':"attachment; filename=busan-kstat-chrome-v27.zip"} if ext=='.zip' else None
+            extra={'Content-Disposition':"attachment; filename=busan-kstat-chrome-v28.zip"} if ext=='.zip' else None
             self.sendbytes(200,item.read_bytes(),mime,extra)
         elif path.path=='/download':
             clean_cache()
@@ -144,7 +144,7 @@ class Handler(BaseHTTPRequestHandler):
                 supplements,warnings,_missing,_period=classify(raw,contents,filename,require_complete=True)
                 uploads.update(supplements)
             else:
-                extra=uploads.pop('kstat_bulk',[])
+                extra=uploads.pop('kstat_bulk',[])+uploads.pop('kstat_extra',[])
                 raw=[]
                 for extra_name,extra_bytes in extra:
                     if extra_name.lower().endswith('.zip'):
@@ -152,7 +152,7 @@ class Handler(BaseHTTPRequestHandler):
                     else:
                         raw.append((extra_name,extra_bytes))
                 if raw:
-                    bulk_map,warnings,_missing,_period=classify(raw,contents,filename)
+                    bulk_map,warnings,_missing,_period=classify(raw,contents,filename,require_complete=True)
                     for key,files in bulk_map.items():
                         uploads.setdefault(key,[]).extend(files)
             output,outname,audit,stat=build_report(contents,filename,uploads,TEMPLATE)
