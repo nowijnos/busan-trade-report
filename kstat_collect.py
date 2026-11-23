@@ -123,10 +123,14 @@ def classify(named_files,main_data,main_name,require_complete=False):
         got_export=stat.total.get('cy_export')
         got_import=stat.total.get('cy_import')
         if key.startswith('mti2'):
-            if any(got is not None and expect is not None and abs(got-expect)>1
+            # Require BOTH exact totals even if K-Stat export displays '전국'.
+            if any(got is None or expect is None or abs(got-expect)>1
                    for got,expect in ((got_export,exp_export),(got_import,exp_import))):
-                warnings.append(f'{name}: 부산 총계가 기본 엑셀과 일치하지 않아 제외')
+                warnings.append(f'{name}: 부산 수출·수입 총계가 기본 엑셀과 일치하지 않아 제외')
                 continue
+        elif stat.region_label=='전국' and (got_import is None or exp_import is None or abs(got_import-exp_import)>1):
+            warnings.append(f'{name}: 지역 표시가 전국이고 본부 엑셀의 중국 수입 총계와 일치하지 않아 제외')
+            continue
         elif got_import is not None and exp_import is not None:
             if got_import>exp_import+1:
                 warnings.append(f'{name}: 중국 수입 총계보다 커서 제외 (이전 오류 유형)')

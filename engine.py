@@ -470,6 +470,7 @@ class Kstat:
     rows:dict
     total:dict
     label:str
+    region_label:str=""
 
 def read_kstat(data,name):
     book=load_excel(data,name)
@@ -478,8 +479,13 @@ def read_kstat(data,name):
     m=re.search(r'년월\s*:\s*(20\d\d)년\s*(\d{1,2})월',meta)
     lev=re.search(r'품목\s*:\s*MTI\s*(\d)단위',meta)
     intr=re.search(r'당월/누계\s*:\s*(당월|누계)',meta)
-    if not (m and lev and intr and '지역 : 부산' in meta):
-        raise Reject(f'{name}: K-Stat 조회 조건을 인식하지 못했거나 지역이 부산이 아닙니다.')
+    region_match=re.search(r'지역\s*:\s*(부산|전국)\b',meta)
+    if not (m and lev and intr and region_match):
+        raise Reject(f'{name}: K-Stat 조회 조건을 인식하지 못했습니다. (MTI/연월/지역 표기 확인)')
+    # K-Stat may export metadata as "전국" despite region code 60 being applied.
+    # Never trust that label as Busan: callers MUST crosscheck exact trusted
+    # headquarters export AND import totals (or full China import total).
+    region_label=region_match.group(1)
     yy,mm=map(int,m.groups());level=int(lev.group(1));interval=intr.group(1)
     result={}
     for r in range(6,max(sh.rows.keys() or [5])+1):
@@ -496,9 +502,9 @@ def read_kstat(data,name):
     for side,pre_col,cur_col in [('export','D','I'),('import','F','K')]:
         tot['py_'+side]=number(sh.val(5,pre_col))
         tot['cy_'+side]=number(sh.val(5,cur_col))
-    return Kstat(meta,yy,mm,interval,level,'국가 : 중국' in meta,result,tot,name)
+    return Kstat(meta,yy,mm,interval,level,'국가 : 중국' in meta,result,tot,name,region_label)
 
-def concat_kstats(inputs,year,month,audit,china_expected_totals=None):
+def concat_kstats(inputs,year,month,audit,china_expected_totals=None,busan_expected_totals=None):
     # named groups with explicit validation; labels do not control interpretation.
     groups={}
     expected={
@@ -521,6 +527,26 @@ def concat_kstats(inputs,year,month,audit,china_expected_totals=None):
             if found!=expect:
                 audit.issue(f'{key}/{name}: 조회 조건 불일치. 기대={expect} / 실제={found} → 미반영')
                 continue
+            # Metadata with "전국" can arise from stale K-Stat region caption.
+            # Admit only when totals prove that region-code 60 returned Busan.
+            if k.region_label=='전국':
+                if key.startswith('mti2'):
+                    valid=busan_expected_totals and key in busan_expected_totals
+                    if valid:
+                        want=busan_expected_totals[key]
+                        valid=all(k.total.get(f'cy_{kind}') is not None and
+                                  want.get(kind) is not None and
+                                  abs(k.total[f'cy_{kind}']-want[kind])<=1
+                                  for kind in ('export','import'))
+                    if not valid:
+                        audit.issue(f'{key}/{name}: 지역 표기가 전국이고 부산 수출·수입 합계를 검증할 수 없어 제외');continue
+                else:
+                    idx={'china_month':1,'china_prior':2,'china_current':3}[key]
+                    want=china_expected_totals[idx] if china_expected_totals is not None else None
+                    got=k.total.get('cy_import')
+                    if want is None or got is None or abs(got-want)>1:
+                        audit.issue(f'{key}/{name}: 지역 표기가 전국이고 중국 수입 총계가 일치하지 않아 제외');continue
+                audit.note(f'{key}/{name}: 엑셀 지역 표시 전국 → 부산(60) / 본부 실적 합계 대조 통과')
             # The K-Stat export may display '국가: 중국' in the header yet
             # contain Busan ALL-country trade. The user's 2025-10 old (6).xls
             # is exactly this case. Validate the actual total, not only labels.
@@ -1504,7 +1530,12 @@ def build_report(main_data,main_name,uploads,template_data):
     # Metadata alone is insufficient (incorrect K-Stat exports can retain the
     # old '국가 : 중국' header after a query is changed).
     china_expected_totals=main_country_totals(main)
-    ks=concat_kstats(uploads,year,month,audit,china_expected_totals)
+    regional=main.sheet('1_지역총괄')
+    busan_expected={
+        key:{'export':number(regional.val(6,col)),'import':number(regional.val(8,col))}
+        for key,col in [('mti2_month','E'),('mti2_current','K'),('mti2_prior','G')]
+    }
+    ks=concat_kstats(uploads,year,month,audit,china_expected_totals,busan_expected)
     require_core_kstat_rows(main,ks)
     totals=main.sheet('1_지역총괄')
     for key,field,valcol in [

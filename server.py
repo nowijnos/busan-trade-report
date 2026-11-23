@@ -11,8 +11,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse, quote
 from pathlib import Path
 import json, os, time, threading, secrets, hmac
-from engine import build_report, Reject
-from kstat_collect import integration_status, fetch_approved_connector, classify, unpack_zip, period_for_main, EXPECTED_KEYS, REQUIRED_SOURCES
+from engine import build_report, Reject, concat_kstats, require_core_kstat_rows, validate_main_schema, read_kstat
+from xlreader import number
+from kstat_collect import integration_status, fetch_approved_connector, classify, unpack_zip, period_for_main, EXPECTED_KEYS, REQUIRED_SOURCES, requirements, SORT_FOR_SOURCE, _expected_totals
 
 ROOT=Path(__file__).resolve().parent
 TEMPLATE=(ROOT/'templates'/'report_template.hwpx').read_bytes()
@@ -73,7 +74,7 @@ class Handler(BaseHTTPRequestHandler):
         if path.path=='/kstat/status':
             self.json(200,integration_status())
         elif path.path=='/health':
-            self.json(200,{'status':'ok','version':'1.1'})
+            self.json(200,{'status':'ok','version':'1.2'})
         elif path.path in ('/','/guide','/report'):
             pages={'/':'index.html','/guide':'guide.html','/report':'report.html'}
             self.sendbytes(200,(ROOT/'static'/pages[path.path]).read_bytes(),'text/html; charset=utf-8')
@@ -87,7 +88,7 @@ class Handler(BaseHTTPRequestHandler):
             mime={'.svg':'image/svg+xml','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.zip':'application/zip','.css':'text/css','.js':'text/javascript'}.get(ext)
             if not mime:
                 self.json(404,{'error':'지원하지 않는 파일입니다.'});return
-            extra={'Content-Disposition':"attachment; filename=busan-kstat-chrome-v28.zip"} if ext=='.zip' else None
+            extra={'Content-Disposition':"attachment; filename=busan-trade-report-helper-v32.zip"} if ext=='.zip' else None
             self.sendbytes(200,item.read_bytes(),mime,extra)
         elif path.path=='/download':
             clean_cache()
@@ -105,7 +106,8 @@ class Handler(BaseHTTPRequestHandler):
         else:self.json(404,{'error':'페이지를 찾을 수 없습니다'})
     def do_POST(self):
         if not self.check_auth(): return
-        if urlparse(self.path).path!='/generate':
+        endpoint=urlparse(self.path).path
+        if endpoint not in ('/generate','/inspect'):
             self.json(404,{'error':'잘못된 요청'});return
         try:size=int(self.headers.get('Content-Length','0') or 0)
         except ValueError:size=0
@@ -152,9 +154,69 @@ class Handler(BaseHTTPRequestHandler):
                     else:
                         raw.append((extra_name,extra_bytes))
                 if raw:
-                    bulk_map,warnings,_missing,_period=classify(raw,contents,filename,require_complete=True)
+                    bulk_map,warnings,_missing,_period=classify(raw,contents,filename,require_complete=(endpoint!='/inspect'))
                     for key,files in bulk_map.items():
                         uploads.setdefault(key,[]).extend(files)
+            if endpoint=='/inspect':
+                # Same validation as real generation, without creating a report.
+                # Order-independent: source keys come exclusively from K-Stat A2 metadata.
+                book,year,month=period_for_main(contents,filename)
+                validate_main_schema(book)
+                expected=requirements(year,month)
+                labels={
+                    'mti2_exp_month':'수출 MTI2 · 당월',
+                    'mti2_exp_current':'수출 MTI2 · 금년 누계',
+                    'mti2_exp_prior':'수출 MTI2 · 전년 누계',
+                    'mti2_imp_month':'수입 MTI2 · 당월',
+                    'mti2_imp_current':'수입 MTI2 · 금년 누계',
+                    'mti2_imp_prior':'수입 MTI2 · 전년 누계',
+                    'china_month':'중국 수입 MTI3 · 당월',
+                    'china_current':'중국 수입 MTI3 · 금년 누계',
+                    'china_prior':'중국 수입 MTI3 · 전년 누계',
+                }
+                # Display each recognized group and its original filename.
+                checks=[]
+                for key,expect in expected.items():
+                    logical=key if key.startswith('china_') else 'mti2_'+key.rsplit('_',1)[1]
+                    paths=[]
+                    for orig,blob in uploads.get(logical,[]):
+                        try:
+                            k=read_kstat(blob,orig)
+                            marker=(k.level,k.is_china,k.year,k.month,k.interval)
+                            import re
+                            matched=re.search(r'정렬\s*:\s*(수출금액|수입금액)',k.meta)
+                            if marker==tuple(expect) and matched and matched.group(1)==SORT_FOR_SOURCE[key]:
+                                paths.append({'name':orig,'rows':len(k.rows)})
+                        except (Reject,ValueError,KeyError):pass
+                    checks.append({'key':key,'label':labels[key], 'files':paths, 'ok':bool(paths)})
+                missing=[c['label'] for c in checks if not c['ok']]
+                notes=list(warnings)
+                if not missing:
+                    try:
+                        # Preserve the strict core-code and China full-total checks.
+                        # Any failure is reported as a concrete explanation, not a vague error.
+                        # 'uploads' contains only the validated grouped sources now.
+                        from engine import Audit, main_country_totals
+                        aug=Audit()
+                        regional=book.sheet('1_지역총괄')
+                        import_expected={k:{'export':number(regional.val(6,col)), 'import':number(regional.val(8,col))}
+                                         for k,col in [('mti2_month','E'),('mti2_current','K'),('mti2_prior','G')]}
+                        parsed=concat_kstats(uploads,year,month,aug,main_country_totals(book),import_expected)
+                        require_core_kstat_rows(book,parsed)
+                        if aug.issues:
+                            notes.extend(aug.issues)
+                    except Reject as ex:
+                        notes.append(str(ex))
+                # Check full-China totals, not just metadata, matching generation policy.
+                if not missing:
+                    try:
+                        _combined,_w,_miss,_period=classify(raw,contents,filename,require_complete=True) if mode=='manual' and raw else (uploads,[],[],(year,month))
+                    except Reject as ex:notes.append(str(ex))
+                ready=not missing and not notes
+                self.json(200,{'ok':True,'ready':ready,'year':year,'month':month,
+                               'checks':checks,'missing':missing,'issues':notes,
+                               'message':('9종 파일이 모두 인식되었고 필수 품목도 확인됐습니다.' if ready else '확인이 필요한 자료가 있습니다. 아래 항목을 확인하세요.')})
+                return
             output,outname,audit,stat=build_report(contents,filename,uploads,TEMPLATE)
             if mode=='auto' and stat.empty>0:
                 raise Reject(f'자동수집 자료에 필요한 데이터 {stat.empty}칸이 누락되어 생성하지 않았습니다. 연계 서버의 MTI 코드별 보충 자료를 확인하세요.')

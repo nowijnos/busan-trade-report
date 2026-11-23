@@ -1,13 +1,70 @@
 <!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>보고서 작성 | 부산 수출입동향</title><style>
 *{box-sizing:border-box}body{margin:0;background:#f6f8fb;color:#233b52;font:15px/1.6 'Malgun Gothic','Apple SD Gothic Neo',sans-serif}.nav{display:flex;gap:10px;padding:11px max(16px,calc((100% - 860px)/2));background:white;border-bottom:1px solid #dfe7ee}.nav a{text-decoration:none;color:#2b587b;font-weight:700;padding:6px 11px;border-radius:7px}.nav a[aria-current=page]{background:#e8f1f9}.shell{max-width:860px;margin:24px auto 54px;padding:0 16px}h1{font-size:25px;margin:0 0 7px}.lead{color:#64798a;font-size:13px;margin:0 0 19px}.card{background:white;border:1px solid #dde5ec;border-radius:13px;padding:22px;margin-bottom:13px}.card h2{font-size:17px;margin:0 0 7px}.card p{color:#697d8c;font-size:13px;margin:0 0 13px}input[type=file]{display:block;width:100%;padding:13px;background:#f7fafc;border:1px solid #bdcfdd;border-radius:8px;color:#314c63;font-size:14px}small{display:block;color:#56758a;margin-top:7px}.notice{margin:11px 0 0;padding:10px 12px;color:#176444;background:#e9f8f0;border:1px solid #a4d6bb;border-radius:8px;font-size:13px;font-weight:700}.notice[hidden]{display:none}.actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:22px 0}button,.button{background:#205d90;border:none;color:white;border-radius:9px;padding:13px 19px;font-size:15px;font-weight:800;cursor:pointer;text-decoration:none}button:disabled{opacity:.6;cursor:wait}.state{color:#687b8b;font-size:13px}details{padding:12px 0;border-top:1px solid #e4ebf1;font-size:13px;margin-top:12px}summary{cursor:pointer;font-weight:700;color:#2a608f}details p{margin-top:7px!important}.result{display:none;border:1px solid #bcd9c9;background:#f4fbf6;border-radius:12px;padding:20px;margin:18px 0}.result.error{border-color:#efc4b9;background:#fff7f5}.result h2{margin:0 0 10px;font-size:18px}.results-links{display:flex;gap:10px;flex-wrap:wrap}.results-links a{display:inline-block;background:#1d668e;color:white;padding:11px 14px;border-radius:8px;text-decoration:none;font-weight:700}.results-links a.secondary{background:#e8f0f5;color:#305870}.warn{color:#a84227}.foot{color:#8293a0;font-size:12px;margin-top:20px}@media(max-width:600px){.card{padding:17px}.shell{margin-top:17px}}
-</style></head><body><nav class="nav"><a href="/">처음으로</a><a href="/guide">① 사용방법</a><a href="/report" aria-current="page">② 보고서 작성</a></nav><main class="shell"><h1>보고서 작성</h1><p class="lead">원본 두 종류만 넣고 생성하세요. 작성연월은 본부 엑셀에서 자동 확인합니다.</p><form id="upload" enctype="multipart/form-data"><input type="hidden" name="kstat_mode" value="manual">
+</style></head><body><nav class="nav"><a href="/">처음으로</a><a href="/guide">① 사용방법</a><a href="/report" aria-current="page">② 보고서 작성</a></nav><main class="shell"><h1>보고서 작성</h1><p class="lead">본부 엑셀 1개와 K-Stat 엑셀 9개를 선택하세요. 파일 선택 순서는 상관없습니다.</p><form id="upload" enctype="multipart/form-data"><input type="hidden" name="kstat_mode" value="manual">
 <section class="card"><h2>① 본부 엑셀 1개</h2><p><b>국내_수출입동향보고서(YYYYMM)_부산.xlsx</b> 파일을 선택하세요.</p><input type="file" name="main" accept=".xlsx" required><small id="mainCount">파일을 선택해 주세요.</small></section>
-<section class="card" id="kstat-source"><h2>② K-Stat 엑셀 9개</h2><p>크롬 도우미에서 <b>수출 MTI2 3개 · 수입 MTI2 3개 · 중국 수입 MTI3 3개</b>를 받은 뒤, 아래에 선택하세요.</p><div id="chrome-import-notice" class="notice" hidden role="status" aria-live="polite"></div><input type="file" name="kstat_bulk" accept=".xls,.xlsx,.zip" multiple required><small id="bulkCount">파일 9개를 선택해 주세요. (확장 프로그램 자동 전달 가능)</small><details><summary>어떤 파일 9개인지 확인하기</summary><p>각 자료를 <b>당월 / 금년 누계 / 전년 누계</b> 순서로 3개씩 다운로드합니다. 수출·수입 정렬을 구분해야 하며, 조회한 연월과 지역 부산(60)도 확인해 주세요.</p><p>목록에서 빠진 품목을 줄이기 위해 K-Stat은 <b>100개씩 보기</b>로 조회합니다. 원본 엑셀의 누락은 임의로 보충하지 않습니다.</p><label for="kstat_extra"><b>누락 코드가 발생했을 때만: 추가 K-Stat 엑셀 선택</b></label><input id="kstat_extra" type="file" name="kstat_extra" accept=".xls,.xlsx" multiple><small>기본 9개 외에 같은 조건으로 추가 조회한 파일이 있을 때만 사용</small></details></section>
+<section class="card" id="kstat-source"><h2>② K-Stat 엑셀 9개</h2><p>크롬 도우미에서 <b>수출 MTI2 3개 · 수입 MTI2 3개 · 중국 수입 MTI3 3개</b>를 받은 뒤, 아래에 선택하세요.</p><div id="chrome-import-notice" class="notice" hidden role="status" aria-live="polite"></div><input type="file" name="kstat_bulk" accept=".xls,.xlsx,.zip" multiple required><small id="bulkCount">파일 9개를 선택해 주세요. (1번부터 또는 9번부터 선택해도 됩니다.)</small><details><summary>어떤 파일 9개인지 확인하기</summary><p>각 자료를 <b>당월 / 금년 누계 / 전년 누계</b> 순서로 3개씩 다운로드합니다. <b>업로드할 때는 순서가 달라도 자동 분류됩니다.</b> 수출·수입 정렬을 구분해야 하며, 조회한 연월과 지역 부산(60)도 확인해 주세요.</p><p>목록에서 빠진 품목을 줄이기 위해 K-Stat은 <b>100개씩 보기</b>로 조회합니다. 원본 엑셀의 누락은 임의로 보충하지 않습니다.</p><label for="kstat_extra"><b>누락 코드가 발생했을 때만: 추가 K-Stat 엑셀 선택</b></label><input id="kstat_extra" type="file" name="kstat_extra" accept=".xls,.xlsx" multiple><small>기본 9개 외에 같은 조건으로 추가 조회한 파일이 있을 때만 사용</small></details></section>
 <div class="actions"><button id="submit" type="submit">한글 보고서 생성하기</button><span class="state" id="progress">통계 검증 후 생성합니다.</span></div></form>
 <div class="result" id="result" aria-live="polite"><h2 id="result-title"></h2><p id="result-summary"></p><div class="results-links" id="downloads"></div><details id="issues-details" hidden><summary id="issues-title">검토가 필요한 항목</summary><div id="issues"></div></details></div>
 <details class="card"><summary>오류가 생겼을 때 / 자세한 설명</summary><p>수집된 자료는 <b>지역·기간·MTI 단위·정렬·총계</b>를 확인합니다. 필수 자료가 없으면 보고서를 생성하지 않고 이유를 알려드립니다.</p><p>수치에 없는 원인 분석은 보고서에서 [작성자 입력]으로 표시됩니다. 생성된 한글 파일의 페이지 나눔은 한컴오피스에서 최종 확인해 주세요.</p><p><a href="/guide">그림으로 사용방법 보기</a> · <a href="https://stat.kita.net/stat/kts/prod/ProdItemImpExpList.screen" target="_blank" rel="noopener">K-Stat 열기</a></p></details><p class="foot">계정·쿠키는 수집하지 않습니다. 업로드 엑셀은 서버 메모리에서 처리합니다.</p></main>
 <script>
-const form=document.getElementById('upload'),submit=document.getElementById('submit'),res=document.getElementById('result');const fileInput=form.querySelector('[name="kstat_bulk"]');
-form.addEventListener('change',e=>{const target=e.target;if(target.name==='main')document.getElementById('mainCount').textContent=target.files.length?'본부 엑셀 1개 선택됨':'파일을 선택해 주세요.';if(target.name==='kstat_bulk')document.getElementById('bulkCount').textContent=`K-Stat ${target.files.length}개 파일 선택됨`;});
-form.addEventListener('submit',async e=>{e.preventDefault();const bulk=[...fileInput.files];if(bulk.length!==9){alert('K-Stat 엑셀 9개를 선택해 주세요.');return}res.style.display='none';submit.disabled=true;submit.textContent='생성 중...';document.getElementById('progress').textContent='조회 조건·통계를 확인하고 있습니다.';try{const r=await fetch('/generate',{method:'POST',body:new FormData(form)});const data=await r.json();if(!r.ok)throw Error(data.error||'보고서를 생성하지 못했습니다.');res.style.display='block';res.className='result';document.getElementById('result-title').textContent='보고서 생성 완료';document.getElementById('result-summary').textContent='한글 파일을 다운로드한 뒤 검토해 주세요.';const links=document.getElementById('downloads');links.replaceChildren();for(const [title,suffix,kind] of [['한글 보고서 받기','','primary'],['검증 내용 받기','&type=audit','secondary']]){const a=document.createElement('a');a.textContent=title;a.href='/download?token='+encodeURIComponent(data.token)+suffix;a.className=kind;links.append(a);}const panel=document.getElementById('issues');panel.replaceChildren();const details=document.getElementById('issues-details');details.hidden=!data.issues?.length;if(data.issues?.length){document.getElementById('issues-title').textContent='검토할 항목 '+data.issues.length+'건 (클릭해서 보기)';for(const item of data.issues){const p=document.createElement('p');p.textContent=item;panel.append(p);}}}catch(err){res.style.display='block';res.className='result error';document.getElementById('result-title').textContent='확인할 내용이 있어 생성을 멈췄습니다';document.getElementById('result-summary').textContent=err.message;document.getElementById('downloads').replaceChildren();document.getElementById('issues-details').hidden=true;}finally{submit.disabled=false;submit.textContent='한글 보고서 생성하기';document.getElementById('progress').textContent='';res.scrollIntoView({behavior:'smooth',block:'start'});}});
+const form=document.getElementById('upload'),submit=document.getElementById('submit'),res=document.getElementById('result');
+const fileInput=form.querySelector('[name="kstat_bulk"]');
+const issueBox=document.getElementById('issues'),detailPanel=document.getElementById('issues-details');
+const title=document.getElementById('result-title'),summary=document.getElementById('result-summary');
+const links=document.getElementById('downloads');
+form.addEventListener('change',e=>{
+ const target=e.target;
+ if(target.name==='main')document.getElementById('mainCount').textContent=target.files.length?'본부 엑셀 1개 선택됨':'파일을 선택해 주세요.';
+ if(target.name==='kstat_bulk')document.getElementById('bulkCount').textContent=target.files.length?`K-Stat ${target.files.length}개 선택됨 · 파일 순서 무관`:'파일 9개를 선택해 주세요.';
+});
+function showIssues(heading,items){
+ detailPanel.hidden=false; detailPanel.open=false; issueBox.replaceChildren();
+ document.getElementById('issues-title').textContent=heading;
+ for(const item of items){const p=document.createElement('p');p.textContent=item;issueBox.appendChild(p);}
+}
+function showError(message,details=[]){
+ res.style.display='block';res.className='result error';title.textContent='자료 확인이 필요합니다';
+ summary.textContent=message;links.replaceChildren();
+ showIssues('문제 자료·확인 방법 펼쳐보기',details.length?details:[message]);
+}
+async function postFiles(endpoint){
+ const response=await fetch(endpoint,{method:'POST',body:new FormData(form)});
+ let data;try{data=await response.json();}catch(_){throw Error('서버에서 검사 결과를 받지 못했습니다. 배포 상태를 확인하세요.');}
+ if(!response.ok)throw Error(data.error||'엑셀을 확인하지 못했습니다.');
+ return data;
+}
+form.addEventListener('submit',async e=>{
+ e.preventDefault();const bulk=[...fileInput.files];
+ if(bulk.length!==9){alert('K-Stat 엑셀을 정확히 9개 선택해 주세요. 순서는 상관없습니다.');return;}
+ res.style.display='none';submit.disabled=true;submit.textContent='검사 중...';
+ document.getElementById('progress').textContent='9개 엑셀의 조회 조건과 필수 품목을 확인하고 있습니다.';
+ try{
+  // Preflight: this produces a complete, order-independent validation report.
+  const check=await postFiles('/inspect');
+  const items=[...(check.checks||[]).map(c=>`${c.ok?'✓':'✗'} ${c.label} — ${c.ok?c.files.map(f=>`${f.name} (${f.rows}품목)`).join(', '):'해당 조건 파일을 찾지 못했습니다'}`),...(check.issues||[])];
+  if(!check.ready){
+   const missing=(check.missing||[]);
+   showError(missing.length?`9개 중 ${missing.length}종이 확인되지 않았습니다. 아래 항목을 펼쳐보세요.`:'필수 품목·조회 조건에 문제가 있습니다. 아래 항목을 펼쳐보세요.',items);
+   return;
+  }
+  submit.textContent='보고서 생성 중...';
+  document.getElementById('progress').textContent='9종 자료 확인 완료 · 한글 보고서를 생성하고 있습니다.';
+  const data=await postFiles('/generate');
+  res.style.display='block';res.className='result';title.textContent='보고서 생성 완료';
+  summary.textContent=`K-Stat ${check.checks?.length||9}종 분류 완료. 한글 보고서를 다운로드한 뒤 최종 검토해 주세요.`;
+  links.replaceChildren();
+  for(const [label,suffix,kind] of [['한글 보고서 받기','','primary'],['검증 내용 받기','&type=audit','secondary']]){
+   const a=document.createElement('a');a.textContent=label;
+   a.href='/download?token='+encodeURIComponent(data.token)+suffix;a.className=kind;links.append(a);
+  }
+  detailPanel.hidden=!data.issues?.length;
+  if(data.issues?.length)showIssues(`검토 항목 ${data.issues.length}건 (클릭해서 보기)`,data.issues);
+ }catch(err){
+  showError(err.message,['엑셀 파일 9개가 실제로 서로 다른 조건인지 확인하세요.','본부 엑셀 기준연월과 K-Stat 연월이 일치하는지 확인하세요.',err.message]);
+ }finally{
+  submit.disabled=false;submit.textContent='한글 보고서 생성하기';
+  document.getElementById('progress').textContent='';
+  if(res.style.display==='block')res.scrollIntoView({behavior:'smooth',block:'start'});
+ }
+});
 </script></body></html>
