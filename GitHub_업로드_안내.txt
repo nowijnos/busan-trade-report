@@ -1,0 +1,14 @@
+부산 수출입동향 웹사이트 v34 (화면·사진 최종 점검판)
+
+1. ZIP 압축 해제
+2. 압축을 푼 내부 파일/폴더들을 GitHub 저장소 루트에 업로드
+3. static/static 처럼 중복되지 않도록 주의
+4. Commit changes 이후 Render 배포가 성공하면 새로고침(Ctrl+Shift+R)
+
+이번 수정 범위:
+ - static/index.html: 최초 1회 설치 안내, 실제 사진 2장, 큰 사용방법 바로가기
+ - static/guide.html: 설치 과정 제거, K-Stat 열기부터 1~6번 실사용 순서
+ - static/assets/chrome-enable-dev-v29.jpg 및 chrome-load-unpacked-v29.jpg: 설치 실제 사진
+
+보고서 생성 코드, 업로드 처리 로직, HWPX 원본 템플릿, 확장 프로그램은 수정하지 않았습니다.
+실제 회사 브라우저에서의 Render 배포 결과는 업데이트 후 확인해야 합니다.

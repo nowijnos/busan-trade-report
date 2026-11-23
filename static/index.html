@@ -1,2 +1,58 @@
-<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>부산지역 수출입동향 자동작성</title><style>
-*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:#f5f8fc;color:#18344d;font:15px/1.65 'Malgun Gothic','Apple SD Gothic Neo',sans-serif}.wrap{width:min(930px,94vw);background:#fff;border:1px solid #e0e7ef;border-radius:18px;padding:32px;box-shadow:0 14px 50px #234c7010}h1{font-size:31px;line-height:1.3;margin:0 0 8px}.sub{color:#60758a;margin:0 0 22px}.menu{display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-bottom:14px}.tile{border:1px solid #d9e4ef;border-radius:13px;text-decoration:none;color:#183b59;padding:23px 21px;transition:box-shadow .12s,border-color .12s}.tile:hover{border-color:#3983b5;box-shadow:0 4px 16px #1c4b7517}.tile strong{display:block;font-size:22px;margin-bottom:8px}.tile span{color:#637b8e;font-size:14px}.tile.primary{background:#1d5688;border-color:#1d5688;color:white}.tile.primary span{color:#e3f0fb}.firstbox{margin-top:6px;background:#eef6fd;border:1px solid #c4dced;border-radius:12px;padding:16px}.firsthead{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px}.firsthead strong{font-size:18px}.firsthead p{margin:4px 0 0;color:#496b84;font-size:13px}.dlbtn{background:#176297;color:#fff;text-decoration:none;font-weight:800;font-size:14px;padding:11px 15px;border-radius:8px;white-space:nowrap}.mini-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.mini{background:#fff;border:1px solid #d5e3ef;border-radius:10px;padding:14px}.mini h3{margin:0 0 8px;font-size:16px}.mini p{margin:0 0 9px;color:#5a7184;font-size:13px}.steps{margin:0;padding-left:18px;color:#284963;font-size:13px}.steps li{margin:4px 0}.hint{margin-top:12px;padding:10px 12px;background:#fff;border:1px dashed #abc3d8;border-radius:9px;font-size:13px;color:#35556f}.hint b{color:#123e66}.note{margin:18px 0 0;color:#74879a;font-size:12px}@media(max-width:760px){.wrap{padding:22px}.menu,.mini-grid{grid-template-columns:1fr}h1{font-size:25px}}</style></head><body><main class="wrap"><h1>부산지역 수출입동향 자동작성</h1><p class="sub">엑셀 원본을 확인해 한글 보고서(HWPX) 검토본을 만듭니다.</p><div class="menu"><a class="tile" href="/guide"><strong>① 사용방법</strong><span>처음 설치부터 실제 조회·업로드까지<br>그림으로 간단히 보기</span></a><a class="tile primary" href="/report"><strong>② 보고서 작성</strong><span>본부 엑셀 + K-Stat 9개<br>파일 선택 후 한글 생성</span></a></div><section class="firstbox"><div class="firsthead"><div><strong>처음 사용하시나요?</strong><p>처음 1회만 도우미를 설치하면 됩니다. 설치가 끝났으면 왼쪽 <b>① 사용방법</b>을 눌러 바로 다음 과정부터 보세요.</p></div><a href="/downloads/busan-trade-report-helper-v32.zip" class="dlbtn" download>도우미 다운로드 (ZIP)</a></div><div class="mini-grid"><div class="mini"><h3>처음 1회 설치</h3><p>아래 두 가지만 하면 설치가 끝나요.</p><ol class="steps"><li><b>크롬 확장 프로그램 열기</b> → 화면 <b>오른쪽 위 개발자 모드</b> 켜기</li><li><b>왼쪽 위 압축해제된 확장 프로그램 로드</b> → 압축 푼 도우미 폴더 선택</li></ol></div><div class="mini"><h3>설치가 끝났다면</h3><p>다음부터는 설치를 다시 할 필요 없어요.</p><ol class="steps"><li>왼쪽 <b>① 사용방법</b> 클릭</li><li><b>K-Stat 열기 → 연월 입력 → 새 작업 시작</b> 순서로 진행</li></ol></div></div><div class="hint"><b>설치 위치 안내:</b> 개발자 모드는 <b>오른쪽 위</b>, ‘압축해제된 확장 프로그램 로드’는 <b>왼쪽 위</b>에 있습니다.</div></section><p class="note">한국무역협회 부산지역 보고서 업무용 · 입력 파일의 통계와 최종 페이지 배치는 확인이 필요합니다.</p></main></body></html>
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>부산지역 수출입동향 자동작성</title>
+<style>
+:root{color-scheme:light;--navy:#1a4466;--blue:#195b90;--line:#d7e2ed;--muted:#5c758a}
+*{box-sizing:border-box}body{margin:0;background:#f3f7fc;color:#173955;font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;line-height:1.52}
+main{width:min(1080px,95vw);margin:38px auto 46px;background:#fff;border:1px solid var(--line);border-radius:18px;padding:30px 34px;box-shadow:0 16px 45px #224c6d12}
+h1{font-size:29px;letter-spacing:-.03em;margin:0 0 5px}p{margin:0}.subtitle{color:var(--muted);font-size:14px}
+.menu{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:21px 0}
+.tile{display:block;padding:17px 19px;border:1px solid var(--line);border-radius:12px;text-decoration:none;color:var(--navy);background:#fbfdff}
+.tile strong{display:block;font-size:19px;margin-bottom:3px}.tile span{font-size:13px;color:var(--muted)}
+.tile.primary{background:#1d5b8c;color:#fff;border-color:#1d5b8c}.tile.primary span{color:#e8f1fb}
+.install{border:2px solid #aecde3;background:#f0f7fc;border-radius:13px;padding:19px 20px}
+.strap{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:9px}
+.pill{background:#1b6295;color:#fff;font-weight:800;font-size:12px;padding:4px 9px;border-radius:30px}
+h2{font-size:21px;margin:0;letter-spacing:-.015em}.install-desc{font-size:13px;color:#566e80;margin:0 0 12px}
+.install-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.install-step{background:#fff;border:1px solid var(--line);border-radius:11px;padding:13px;display:flex;flex-direction:column;gap:6px;min-width:0}
+.step-title{font-size:15px;font-weight:800;margin:0;color:#183c5d}.step-title em{font-style:normal;background:#e6f0f8;border-radius:5px;padding:2px 6px;color:#145582}
+.install-step img{width:100%;height:106px;object-fit:contain;object-position:center;background:#fff;border:1px solid #e1e9f0;border-radius:7px;display:block}
+.step-note{font-size:12px;color:#556f83}.step-note strong{color:#18517d}
+.install-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:13px}
+.action{border:0;border-radius:9px;background:var(--blue);color:#fff;text-decoration:none;font-weight:800;font-size:15px;padding:11px 16px;cursor:pointer;font-family:inherit}
+.subaction{border:1px solid #a9c2d6;background:#fff;color:#19527d;padding:10px 12px;font-weight:700;font-size:12px;border-radius:8px;cursor:pointer;font-family:inherit;text-decoration:none}
+.help{font-size:12px;color:var(--muted)}
+.installed{margin-top:14px;border:2px solid #1e639a;background:#eaf4fd;border-radius:13px;padding:16px 18px;display:flex;align-items:center;justify-content:space-between;gap:15px}
+.installed-copy strong{display:block;font-size:19px;color:#144c79}.installed-copy span{display:block;font-size:14px;color:#386484;margin-top:3px}
+.installed a{display:block;text-align:center;background:#195b90;color:white;font-size:16px;font-weight:800;text-decoration:none;padding:13px 22px;border-radius:9px;white-space:nowrap;box-shadow:0 3px 10px #12568830}
+footer{margin-top:14px;color:#7a8c9b;font-size:11px}
+@media(max-width:700px){main{padding:20px;margin:16px auto}.menu,.install-grid{grid-template-columns:1fr}.installed{flex-direction:column;align-items:stretch}.installed a{white-space:normal}h1{font-size:24px}.install-step img{height:140px}}
+</style></head><body><main>
+<header><h1>부산지역 수출입동향 자동작성</h1><p class="subtitle">본부 엑셀과 K-Stat 자료로 한글(HWPX) 보고서를 작성합니다.</p></header>
+<div class="menu">
+<a class="tile" href="/guide"><strong>① 사용방법</strong><span>도우미 설치를 마쳤다면 바로 사용방법을 확인하세요.</span></a>
+<a class="tile primary" href="/report"><strong>② 보고서 작성</strong><span>본부 엑셀 1개 + K-Stat 엑셀 9개로 보고서 생성</span></a>
+</div>
+<section class="install" aria-labelledby="install-title">
+<div class="strap"><span class="pill">최초 1회만</span><h2 id="install-title">처음 사용하는 분만 도우미 설치</h2></div>
+<p class="install-desc">구글 크롬(Chrome)에서만 사용할 수 있습니다. 한 번 설치한 뒤에는 다시 설치하지 않아도 됩니다.</p>
+<div class="install-grid">
+<div class="install-step"><p class="step-title"><em>1</em> 오른쪽 위 ‘개발자 모드’ 켜기</p>
+<img src="/assets/chrome-enable-dev-v29.jpg" alt="크롬 확장 프로그램 화면 오른쪽 위 개발자 모드 위치를 빨간 테두리로 표시한 사진" loading="eager">
+<p class="step-note">크롬 주소창에 <strong>chrome://extensions</strong> 입력 → 오른쪽 위 <strong>개발자 모드</strong> 켜기</p></div>
+<div class="install-step"><p class="step-title"><em>2</em> 왼쪽 위 ‘압축해제된 확장 프로그램 로드’</p>
+<img src="/assets/chrome-load-unpacked-v29.jpg" alt="크롬 확장 프로그램 화면 왼쪽 위 압축해제된 확장 프로그램 로드 버튼을 빨간 테두리로 표시한 사진" loading="eager">
+<p class="step-note">먼저 내려받은 ZIP 압축을 풀고 → <strong>왼쪽 위 버튼</strong> → 압축 푼 폴더 선택</p></div>
+</div>
+<div class="install-actions"><a class="action" href="/downloads/busan-trade-report-helper-v32.zip" download>도우미 다운로드 (ZIP)</a>
+<a class="subaction" href="chrome://extensions" id="extensionsLink">크롬 확장 프로그램 열기</a><button class="subaction" type="button" id="copyAddress">주소 복사</button>
+<span class="help">링크가 열리지 않으면 주소를 복사해 크롬 주소창에 붙여넣으세요.</span></div>
+</section>
+<section class="installed" aria-labelledby="installed-title"><div class="installed-copy"><strong id="installed-title">이미 설치하셨나요? 다시 설치할 필요 없습니다!</strong><span>아래 버튼을 누르고, <b>1번 ‘K-Stat 열기’</b>부터 바로 시작하세요.</span></div>
+<a href="/guide">사용방법 바로가기 →</a></section>
+<footer>한국무역협회 부산지역 보고서 업무용 · 작성한 통계와 HWPX 최종 배치는 확인하세요.</footer>
+</main><script>
+const copyButton=document.getElementById('copyAddress');copyButton.addEventListener('click',async()=>{try{await navigator.clipboard.writeText('chrome://extensions');copyButton.textContent='주소 복사 완료';}catch(e){window.prompt('주소를 복사해 크롬 주소창에 붙여넣으세요.','chrome://extensions');}});
+document.getElementById('extensionsLink').addEventListener('click',()=>{setTimeout(()=>{if(copyButton.textContent==='주소 복사')copyButton.textContent='안 열리면 주소 복사';},400);});
+</script></body></html>
