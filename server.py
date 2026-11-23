@@ -12,6 +12,7 @@ from urllib.parse import parse_qs, urlparse, quote
 from pathlib import Path
 import json, os, time, threading, secrets, hmac
 from engine import build_report, Reject
+from kstat_collect import integration_status, fetch_approved_connector, classify, unpack_zip, period_for_main, EXPECTED_KEYS
 
 ROOT=Path(__file__).resolve().parent
 TEMPLATE=(ROOT/'templates'/'report_template.hwpx').read_bytes()
@@ -69,10 +70,25 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if not self.check_auth(): return
         path=urlparse(self.path)
-        if path.path=='/health':
+        if path.path=='/kstat/status':
+            self.json(200,integration_status())
+        elif path.path=='/health':
             self.json(200,{'status':'ok','version':'1.1'})
-        elif path.path=='/':
-            self.sendbytes(200,(ROOT/'static'/'index.html').read_bytes(),'text/html; charset=utf-8')
+        elif path.path in ('/','/guide','/report'):
+            pages={'/':'index.html','/guide':'guide.html','/report':'report.html'}
+            self.sendbytes(200,(ROOT/'static'/pages[path.path]).read_bytes(),'text/html; charset=utf-8')
+        elif path.path.startswith('/assets/') or path.path.startswith('/downloads/'):
+            # Serve only bounded, release-owned static assets; never expose source or uploaded data.
+            base=(ROOT/'static').resolve()
+            item=(base/path.path.lstrip('/')).resolve()
+            if not item.is_file() or base not in item.parents:
+                self.json(404,{'error':'파일을 찾을 수 없습니다.'});return
+            ext=item.suffix.lower()
+            mime={'.svg':'image/svg+xml','.png':'image/png','.webp':'image/webp','.zip':'application/zip','.css':'text/css','.js':'text/javascript'}.get(ext)
+            if not mime:
+                self.json(404,{'error':'지원하지 않는 파일입니다.'});return
+            extra={'Content-Disposition':"attachment; filename=busan-kstat-chrome-v27.zip"} if ext=='.zip' else None
+            self.sendbytes(200,item.read_bytes(),mime,extra)
         elif path.path=='/download':
             clean_cache()
             q=parse_qs(path.query);token=q.get('token',[''])[0]
@@ -103,9 +119,12 @@ class Handler(BaseHTTPRequestHandler):
             msg=BytesParser(policy=policy.default).parsebytes(
                 b'MIME-Version: 1.0\r\nContent-Type: '+ctype.encode()+b'\r\n\r\n'+raw)
             uploads={}
+            controls={}
             for part in msg.iter_parts():
                 key=part.get_param('name',header='content-disposition')
                 filename=part.get_filename()
+                if key and not filename:
+                    controls[key]=str(part.get_content() or '').strip()
                 if key and filename:
                     data=part.get_payload(decode=True)
                     if len(data)>20*1024*1024: raise Reject('개별 업로드 파일은 20MB 이하여야 합니다.')
@@ -114,7 +133,35 @@ class Handler(BaseHTTPRequestHandler):
             if not main:raise Reject('기본 보고서 엑셀(.xlsx)은 필수입니다.')
             filename,contents=main[0]
             if not filename.lower().endswith('.xlsx'):raise Reject('기본 보고서 엑셀은 .xlsx 형식이어야 합니다.')
+            mode=controls.get('kstat_mode','manual')
+            if mode not in ('manual','auto'):raise Reject('K-Stat 수집 방식이 올바르지 않습니다.')
+            warnings=[]
+            if mode=='auto':
+                if any(uploads.get(key) for key in EXPECTED_KEYS) or uploads.get('kstat_bulk'):
+                    raise Reject('자동 수집 모드에서는 개별 K-Stat 업로드를 동시에 선택하지 마세요.')
+                book,year,month=period_for_main(contents,filename)
+                raw=fetch_approved_connector(year,month)
+                supplements,warnings,_missing,_period=classify(raw,contents,filename,require_complete=True)
+                uploads.update(supplements)
+            else:
+                extra=uploads.pop('kstat_bulk',[])
+                raw=[]
+                for extra_name,extra_bytes in extra:
+                    if extra_name.lower().endswith('.zip'):
+                        raw.extend(unpack_zip(extra_bytes))
+                    else:
+                        raw.append((extra_name,extra_bytes))
+                if raw:
+                    bulk_map,warnings,_missing,_period=classify(raw,contents,filename)
+                    for key,files in bulk_map.items():
+                        uploads.setdefault(key,[]).extend(files)
             output,outname,audit,stat=build_report(contents,filename,uploads,TEMPLATE)
+            if mode=='auto' and stat.empty>0:
+                raise Reject(f'자동수집 자료에 필요한 데이터 {stat.empty}칸이 누락되어 생성하지 않았습니다. 연계 서버의 MTI 코드별 보충 자료를 확인하세요.')
+            for message in warnings:
+                stat.issue('K-Stat 자료 자동분류: '+message)
+            if warnings:
+                audit+='\n[일괄 업로드 자동분류에서 제외된 파일]\n'+'\n'.join('· '+w for w in warnings)+'\n'
             token=secrets.token_urlsafe(24)
             clean_cache()
             with LOCK:CACHE[token]={'created':time.monotonic(),'name':outname,'data':output,'audit':audit}

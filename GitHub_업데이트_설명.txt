@@ -1,0 +1,28 @@
+부산 수출입동향 자동작성 v27 — GitHub 교체 안내
+================================================
+1. 본 ZIP의 server.py, kstat_collect.py, static 폴더 전체를 기존 GitHub
+   저장소 루트의 같은 경로에 올리고 Commit changes 합니다.
+   - static/index.html : 처음 페이지 (사용방법 / 보고서 작성)
+   - static/guide.html : 사진 형태의 안내 그림이 있는 사용설명서
+   - static/report.html : 기존 보고서 작성 폼 (v16 일괄 업로드 포함)
+   - static/assets/* : 각 단계 안내 그림 8개
+   - static/downloads/busan-kstat-chrome-v27.zip : 사용자 설치용 확장 프로그램
+2. 이번 패키지는 engine.py, xlreader.py, templates/report_template.hwpx,
+   requirements.txt, render.yaml을 포함하지 않습니다. 기존 파일은 절대 덮어쓰지 마세요.
+3. server.py는 기존 v16 코드의 /generate 부분을 그대로 유지하고,
+   '/' 첫 화면, '/guide' 사용방법, '/report' 작성 페이지와 정적파일 GET
+   경로만 추가한 파일입니다.
+4. Render의 Deploys에서 배포 성공을 확인합니다.
+5. 사이트 접속 → 사용방법 → 크롬 도우미 ZIP 다운로드 → 압축해제 후
+   chrome://extensions에서 개발자 모드→압축해제된 확장 프로그램 로드.
+6. 예전 확장 프로그램 v26은 비활성화하고 v27만 사용합니다.
+7. K-Stat 6개 파일은 사용자가 직접 선택하여 보고서 사이트로 전달합니다.
+   새 웹사이트에 접속/로그인되어야 하며, 파일이 선택됐는지 본인이 확인합니다.
+
+보안: 실제 계정, 쿠키, 인증헤더를 수집하는 코드 없음. 사이트는 기존 APP_PASSWORD
+Basic 인증을 유지. 기관의 확장 프로그램 설치/파일 외부전송 정책 확인.
+
+제한: 실제 사내 로그인 K-Stat 환경과 Render 배포를 이 컨테이너에서 원격 검증할 수
+없습니다. 익스텐션 -> 사이트 6개 파일 전달은 브라우저 시뮬레이션으로 검증했습니다.
+또한 Chrome 보안 정책상 웹페이지에서 확장 프로그램을 무확인 자동 설치할 수
+없습니다. 한번 압축해제 폴더로 로드해야 합니다.
