@@ -1,0 +1,36 @@
+{
+  "manifest_version": 3,
+  "name": "부산 수출입동향 K-Stat 크롬 도우미 v28",
+  "version": "0.28.0",
+  "description": "부산 수출 MTI2·수입 MTI2·중국수입 MTI3 총 9개 조건 수동확인 다운로드·보고서 전달",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "tabs",
+    "storage",
+    "downloads"
+  ],
+  "host_permissions": [
+    "https://stat.kita.net/*",
+    "https://busan-trade-report.onrender.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "K-Stat 보고서 도우미"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://busan-trade-report.onrender.com/*"
+      ],
+      "js": [
+        "report_bridge.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "minimum_chrome_version": "110"
+}
