@@ -1442,24 +1442,20 @@ def replace_charts(parts,main,year,month,audit):
         # Family name alone can silently resolve to a non-Korean font on Render;
         # pass this exact font file to EVERY text artist below.
         plt.rcParams['axes.unicode_minus'] = False
-        sh=main.sheet('2_3년간월별수출입')
-        points=[]
-        for r in range(5,41):
-            ym=str(sh.val(r,'B') or '').strip()
-            if not re.fullmatch(r'20\d\d\.\d\d',ym):continue
-            v=(number(sh.val(r,'C')),number(sh.val(r,'D')),number(sh.val(r,'E')),number(sh.val(r,'F')))
-            if any(n is None for n in v):continue
-            points.append((ym,*v))
-        points=sorted(points,key=lambda x:x[0])[-13:]
-        if len(points)!=13:raise Reject('월별 그래프: 연속 13개월 데이터가 없어 정확한 그래프 작성 불가')
-        import datetime
-        ym_values=[datetime.datetime.strptime(p[0],'%Y.%m') for p in points]
-        if any(((b.year-a.year)*12+b.month-a.month)!=1 for a,b in zip(ym_values,ym_values[1:])):
-            raise Reject('월별 그래프의 월이 연속되지 않습니다')
+        from excel_chart_reference import excel_chart_rows
+        # Source workbook is the original 2_3년간월별수출입 monthly data.
+        # Use exact user Excel rules: A2:C14 descending -> A18:C30 ascending;
+        # USD amounts / 1,000,000, growth rates unchanged.
+        try:
+            chart_rows = excel_chart_rows(main, year, month, number)
+        except ValueError as exc:
+            raise Reject(str(exc)) from exc
         for kind,imagekey,amount_ix,rate_ix in [('수출','BinData/image2.bmp',1,2),('수입','BinData/image3.bmp',3,4)]:
-            values=[p[amount_ix]/1000000 for p in points]
-            rates=[p[rate_ix] for p in points]
-            labels=[p[0] for p in points]
+            # The original Excel chart displays exactly A18:C30 (ascending months).
+            chart_points = chart_rows[kind]
+            values=[row[1] for row in chart_points]  # B18:B30, 백만 달러
+            rates=[row[2] for row in chart_points]   # C18:C30, %
+            labels=[row[0] for row in chart_points]  # A18:A30, YYYY.MM
             # Match original image size and aspect to avoid layout reflow in HWPX.
             original=Image.open(io.BytesIO(parts[imagekey]))
             width,height=original.size
@@ -1475,31 +1471,16 @@ def replace_charts(parts,main,year,month,audit):
             ax.yaxis.set_major_formatter(FuncFormatter(lambda y,pos:f'{y:,.0f}'))
             ax.set_xticks(range(13));ax.set_xticklabels(labels,rotation=38,ha='right',fontsize=7.4)
             ax.tick_params(axis='x',length=0,pad=5)
-            # Each blue bar has a value label, like the reference HWPX charts.
-            for i,value in enumerate(values):
-                ax.annotate(f'{value:,.0f}',(i,value),xytext=(0,3),textcoords='offset points',fontsize=7.4,ha='center',color='#202832')
             ax2=ax.twinx()
             lo,hi=min(rates),max(rates)
             spread=max(hi-lo,8)
             ax2.set_ylim(lo-spread*.26,hi+spread*.29)
             ax2.spines[['top','left','right']].set_visible(False)
             ax2.tick_params(axis='y',length=0,labelsize=8)
-            ax2.plot(range(13),rates,color='#EE7D28',marker='s',markersize=3.6,linewidth=2,zorder=3)
-            # Label selected points to reduce overlap, but always mark current and prior month.
-            for i,r in enumerate(rates):
-                if i in (0,3,6,9,11,12):
-                    # If the growth rate marker is at nearly the same height
-                    # as its bar value, put the small rate callout BELOW-LEFT
-                    # instead of covering the black amount label.
-                    amount_fraction = values[i] / ax.get_ylim()[1]
-                    rate_lower,rate_upper = ax2.get_ylim()
-                    rate_fraction = (r-rate_lower) / (rate_upper-rate_lower)
-                    collides = abs(amount_fraction-rate_fraction) < .085
-                    offset = (-20,-22) if collides else (0,-14 if i%2 else 6)
-                    ax2.annotate(f'{r:.1f}',(i,r),textcoords='offset points',xytext=offset,
-                                 ha='center',fontsize=7.1,color='#B24D12',
-                                 bbox={'facecolor':'white','edgecolor':'#4776BD',
-                                       'linewidth':.48,'alpha':.96,'pad':.6})
+            ax2.plot(range(13),rates,color='#EE7D28',marker='s',markersize=3.6,
+                     linewidth=2,zorder=3)
+            # Value and rate annotations are drawn AFTER axes are laid out,
+            # using pixel-space collision checks. They cannot obscure each other.
             from matplotlib.lines import Line2D
             from matplotlib.patches import Patch
             lab1=f'{kind}액(좌측)'
@@ -1523,6 +1504,15 @@ def replace_charts(parts,main,year,month,audit):
             for artist in fig.findobj(match=Text):
                 artist.set_fontproperties(chart_font)
             fig.canvas.draw()
+            # Find safe pixel-space positions only after final axis geometry
+            # and font metrics have been established by the initial render.
+            from chart_label_layout import place_labels
+            layout = place_labels(fig,ax,ax2,values,rates,chart_font)
+            # Tick labels can be created lazily during first draw. Apply the
+            # verified file font again to all text, including both axes.
+            for artist in fig.findobj(match=Text):
+                artist.set_fontproperties(chart_font)
+            fig.canvas.draw()
             korean_artists = [artist for artist in fig.findobj(match=Text)
                               if any('가' <= ch <= '힣' for ch in artist.get_text())]
             if not korean_artists or any(os.path.realpath(artist.get_fontproperties().get_file() or '')
@@ -1534,7 +1524,7 @@ def replace_charts(parts,main,year,month,audit):
             img=Image.open(io.BytesIO(buf.getvalue())).convert('RGB')
             img=img.resize((width*2,height*2),Image.Resampling.LANCZOS)
             bmp=io.BytesIO();img.save(bmp,format='BMP');parts[imagekey]=bmp.getvalue()
-            audit.note(f'{imagekey}: 연속 13개월의 {kind} 금액·전년 동월 대비율 차트 생성 (원본 이미지 비율 유지, 라벨 표시, 한글 지원 시 한글 폰트 사용)')
+            audit.note(f'{imagekey}: v38 엑셀 기준 {kind} 그래프 생성 (13개월 {labels[0]}~{labels[-1]}, 한글 글꼴 및 수치 레이블 충돌 회피, 금액 레이블 {layout["moved_amount_labels"]}개 자동 위치 조정)')
     except (ImportError,Reject) as e:
         # Never retain a graph from the prior reporting month if chart building fails.
         raise Reject(f'월별 그래프를 검증된 자료로 작성할 수 없습니다: {e}')
