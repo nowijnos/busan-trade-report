@@ -1366,44 +1366,53 @@ def build_tables(root0,root1,main,kstats,audit,styles):
 
 
 def resolve_korean_plot_font(font_manager):
-    """Find a font with Korean glyphs, explicitly registering dependency font.
+    """Return FontProperties with an explicit file path, never just a family name.
 
-    A font family being named 'NanumGothic' is not proof that it really
-    contains Hangul. Test glyph coverage using Matplotlib's FreeType wrapper.
-    This function never copies or distributes a font with the application.
+    The approved report embeds Korean-language BMP charts. On hosted servers
+    font-family name resolution can pick a different font after cache changes,
+    so every Matplotlib text artist must use the exact verified font file.
+    The font comes from the *installed* Koreanize dependency (or a system font),
+    not from any source/archive distributed with this project.
     """
-    from matplotlib.ft2font import FT2Font
     from pathlib import Path
+    from matplotlib.ft2font import FT2Font
 
-    def suitable(path):
+    # Test EVERY Korean character actually used in the static chart labels.
+    labels = '수출액좌측입전년동월비증감률우백만달러'
+    glyphs = sorted(set(ch for ch in labels if '\uac00' <= ch <= '\ud7a3'))
+    def supported(path):
         try:
-            ft=FT2Font(str(path))
-            return all(ft.get_char_index(ord(ch)) for ch in '한글수출입률')
-        except (ValueError, OSError, RuntimeError):
+            ft = FT2Font(str(path))
+            return all(ft.get_char_index(ord(ch)) != 0 for ch in glyphs)
+        except (OSError, RuntimeError, ValueError):
             return False
 
-    # koreanize-matplotlib ships NanumGothic inside the pip-installed package.
-    # Some matplotlib cache states do not index its runtime-registered family;
-    # explicitly register the font file as well as importing the package.
+    paths = []
+    # This pip package installs a Korean font inside the server's site-packages.
     try:
         import koreanize_matplotlib
-        package_root=Path(koreanize_matplotlib.__file__).resolve().parent
-        packaged_font=package_root/'fonts'/'NanumGothic.ttf'
-        if packaged_font.is_file() and suitable(packaged_font):
-            font_manager.fontManager.addfont(str(packaged_font))
-            return font_manager.FontProperties(fname=str(packaged_font)).get_name()
-    except (ImportError, OSError, RuntimeError, ValueError):
+        root = Path(koreanize_matplotlib.__file__).resolve().parent
+        paths.append(root / 'fonts' / 'NanumGothic.ttf')
+    except ImportError:
         pass
 
-    # Fallback for servers where Noto CJK/Nanum is installed system-wide.
-    preferred=('NanumGothic','Noto Sans CJK KR','NanumBarunGothic',
-               'Malgun Gothic','AppleGothic','Noto Sans CJK JP')
-    fonts=list(font_manager.fontManager.ttflist)
-    fonts.sort(key=lambda f:(preferred.index(f.name) if f.name in preferred
-                             else len(preferred), f.name))
-    for font in fonts:
-        if suitable(font.fname):
-            return font.name
+    # Only if the dependency font is unavailable, accept a locally installed
+    # font that fully covers every Korean label. Never accept a random fallback.
+    priority = ('NanumGothic','Noto Sans CJK KR','NanumBarunGothic',
+                'Malgun Gothic','AppleGothic','Noto Sans CJK JP')
+    installed = sorted(font_manager.fontManager.ttflist,
+                       key=lambda f: (priority.index(f.name) if f.name in priority
+                                      else len(priority), f.name, str(f.fname)))
+    paths.extend(Path(entry.fname) for entry in installed)
+    for font_path in paths:
+        if not font_path.is_file() or not supported(font_path):
+            continue
+        font_manager.fontManager.addfont(str(font_path))
+        # Crucial: retain fname rather than resolving by font-family string.
+        prop = font_manager.FontProperties(fname=str(font_path))
+        if Path(font_manager.findfont(prop, fallback_to_default=False)).resolve() != font_path.resolve():
+            continue
+        return prop
     return None
 
 
@@ -1424,15 +1433,15 @@ def replace_charts(parts,main,year,month,audit):
         # bundled inside the declared koreanize-matplotlib Python dependency;
         # explicitly register and validate real Hangul glyph coverage.
         # This never switches graph labels to English or reuses old-month charts.
-        found = resolve_korean_plot_font(font_manager)
-        if not found:
+        chart_font = resolve_korean_plot_font(font_manager)
+        if chart_font is None:
             raise Reject(
-                '서버에 한글 그래프 글꼴이 없습니다. Render의 Build Command가 '
-                '`pip install -r requirements.txt`인지 확인한 뒤 Clear build cache & deploy 하세요. '
-                'koreanize-matplotlib 패키지가 실제로 설치되어야 합니다.'
+                '한글 그래프 글꼴을 찾을 수 없습니다. 서버에서 koreanize-matplotlib 의존성 '
+                '설치 여부를 확인하고 재배포하세요. 한글이 깨진 그래프는 생성하지 않습니다.'
             )
-        plt.rcParams['font.family']=found
-        plt.rcParams['axes.unicode_minus']=False
+        # Family name alone can silently resolve to a non-Korean font on Render;
+        # pass this exact font file to EVERY text artist below.
+        plt.rcParams['axes.unicode_minus'] = False
         sh=main.sheet('2_3년간월별수출입')
         points=[]
         for r in range(5,41):
@@ -1479,19 +1488,47 @@ def replace_charts(parts,main,year,month,audit):
             # Label selected points to reduce overlap, but always mark current and prior month.
             for i,r in enumerate(rates):
                 if i in (0,3,6,9,11,12):
-                    ax2.annotate(f'{r:.1f}',(i,r),textcoords='offset points',xytext=(0,-14 if i%2 else 6),
+                    # If the growth rate marker is at nearly the same height
+                    # as its bar value, put the small rate callout BELOW-LEFT
+                    # instead of covering the black amount label.
+                    amount_fraction = values[i] / ax.get_ylim()[1]
+                    rate_lower,rate_upper = ax2.get_ylim()
+                    rate_fraction = (r-rate_lower) / (rate_upper-rate_lower)
+                    collides = abs(amount_fraction-rate_fraction) < .085
+                    offset = (-20,-22) if collides else (0,-14 if i%2 else 6)
+                    ax2.annotate(f'{r:.1f}',(i,r),textcoords='offset points',xytext=offset,
                                  ha='center',fontsize=7.1,color='#B24D12',
-                                 bbox={'facecolor':'white','edgecolor':'none','alpha':.8,'pad':.6})
+                                 bbox={'facecolor':'white','edgecolor':'#4776BD',
+                                       'linewidth':.48,'alpha':.96,'pad':.6})
             from matplotlib.lines import Line2D
             from matplotlib.patches import Patch
             lab1=f'{kind}액(좌측)'
             lab2='전년동월비 증감률(우측)'
             ax.text(-.09,1.025,'(백만 달러)',transform=ax.transAxes,fontsize=8,ha='left',va='bottom')
             ax2.text(1.065,1.025,'(%)',transform=ax2.transAxes,fontsize=8,ha='right',va='bottom')
+            legend_font = chart_font.copy(); legend_font.set_size(8.8)
             fig.legend([Patch(color='#4776BD'),Line2D([0],[0],color='#EE7D28',marker='s',linewidth=2)],
-                       [lab1,lab2],loc='upper center',ncol=2,frameon=False,fontsize=8.8,
+                       [lab1,lab2],loc='upper center',ncol=2,frameon=False,prop=legend_font,
                        bbox_to_anchor=(.5,.995))
             fig.subplots_adjust(top=.87,bottom=.22,left=.092,right=.91)
+            # Apply explicit font-file choice to legend, units, ticks, amounts,
+            # date labels and callouts. Font names / Matplotlib caches on Linux
+            # are intentionally NOT trusted. No font is bundled with the app.
+            from matplotlib.text import Text
+            import os
+            chart_font_path = os.path.realpath(chart_font.get_file())
+            # Set the explicit file BEFORE the very first drawing operation.
+            # Numeric tick labels created lazily may use default fonts, but all
+            # Korean-bearing text is already present in the artist tree.
+            for artist in fig.findobj(match=Text):
+                artist.set_fontproperties(chart_font)
+            fig.canvas.draw()
+            korean_artists = [artist for artist in fig.findobj(match=Text)
+                              if any('가' <= ch <= '힣' for ch in artist.get_text())]
+            if not korean_artists or any(os.path.realpath(artist.get_fontproperties().get_file() or '')
+                                         != chart_font_path for artist in korean_artists):
+                plt.close(fig)
+                raise Reject('그래프의 한글 글꼴 적용을 검증하지 못해 생성 중단')
             # No duplicate chart title: document already prints its figure caption.
             buf=io.BytesIO();fig.savefig(buf,format='png',dpi=170,facecolor='white');plt.close(fig)
             img=Image.open(io.BytesIO(buf.getvalue())).convert('RGB')

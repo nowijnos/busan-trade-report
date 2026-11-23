@@ -1,23 +1,18 @@
-부산지역 수출입동향 자동작성 v35 — 한글 그래프 글꼴 및 사용설명 개선
+부산지역 수출입동향 웹사이트 v36 · 한글 그래프 깨짐 수정
 
-1. ZIP 압축 해제
-2. 압축을 푼 내용물을 기존 GitHub 저장소 루트에 업로드 (static/static 중복 금지)
-3. Commit changes, Render 배포 성공 확인, Ctrl+Shift+R
+1) ZIP을 압축 해제하고 내용물을 GitHub 저장소 최상위 경로에 업로드하세요.
+   저장소에 static/guide.html, engine.py, templates/report_template.hwpx 경로가 유지되어야 합니다.
+2) Commit changes 후 Render Deploy가 성공하는지 확인하세요.
+3) 기존 화면이 남으면 웹사이트에서 Ctrl+Shift+R로 새로고침하세요.
+4) 글꼴 오류가 계속된다면 Render Build Command에 pip install -r requirements.txt가
+   들어 있는지 확인하고 Clear build cache & deploy 하세요.
 
-이번 수정 파일:
-- engine.py : 한글 글꼴의 실제 한글 글리프 검사 + koreanize-matplotlib 패키지 글꼴 명시적 등록
-- requirements.txt : 기존 koreanize-matplotlib 의존성 강조
-- static/index.html : 도우미 하나로 K-Stat부터 보고서 작성까지 연결되는 장점 설명
-- static/guide.html : 크롬 주소창 오른쪽의 도우미 아이콘 위치 및 한 번 설치 후 사용 흐름 설명
-- static/assets/chrome-helper-icon-strip.jpg : 이용자가 제공한 실제 브라우저 사진 일부
+이 버전에서 변경한 기능 코드: engine.py 안의 한글 그래프 글꼴 지정 및 숫자 라벨 겹침 방지.
+변경하지 않은 항목: server.py, kstat_collect.py, xlreader.py,
+                   requirements.txt, static/*, templates/report_template.hwpx
+한글 글꼴 파일을 GitHub ZIP에 별도로 넣지 않습니다. 필요한 글꼴은
+requirements.txt의 koreanize-matplotlib 설치 패키지에서 사용합니다.
 
-중요: Render 대시보드 > 서비스 > Settings > Build Command가 'pip install -r requirements.txt'인지 확인하세요.
-그렇지 않으면 koreanize-matplotlib이 설치되지 않아 한글 그래프 생성 오류가 남습니다.
-수정 뒤 기존 Render 서비스에서 'Clear build cache & deploy'를 선택해 의존성을 새로 설치해 주세요.
-
-불변 파일:
-- xlreader.py, kstat_collect.py, server.py
-- templates/report_template.hwpx
-- 크롬 확장 프로그램 설치 ZIP 및 기존 9회 조회/다운로드 흐름
-
-실사용 과정에서 각 단계의 결과 확인/체크/다운로드 버튼은 사용자가 직접 수행합니다.
+로컬 검사 결과: 실제 2026년 10월 본부 엑셀 + K-Stat 9개로 HWPX 생성 성공,
+수치 공란 0개, 실제 한글 이미지 2개 생성, v35 대비 차이 부품은 그래프 BMP 2개만.
+배포 Render 서버 자체에 대한 실제 사내 로그인 검사 및 한글에서의 최종 출력 확인은 별도로 필요합니다.
