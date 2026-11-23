@@ -1365,169 +1365,35 @@ def build_tables(root0,root1,main,kstats,audit,styles):
         if len(name)>11:audit.note(f'표7 {name}: 긴 품목명은 한글에서 두 줄/자간 검수 필요')
 
 
-def resolve_korean_plot_font(font_manager):
-    """Return FontProperties with an explicit file path, never just a family name.
-
-    The approved report embeds Korean-language BMP charts. On hosted servers
-    font-family name resolution can pick a different font after cache changes,
-    so every Matplotlib text artist must use the exact verified font file.
-    The font comes from the *installed* Koreanize dependency (or a system font),
-    not from any source/archive distributed with this project.
-    """
-    from pathlib import Path
-    from matplotlib.ft2font import FT2Font
-
-    # Test EVERY Korean character actually used in the static chart labels.
-    labels = '수출액좌측입전년동월비증감률우백만달러'
-    glyphs = sorted(set(ch for ch in labels if '\uac00' <= ch <= '\ud7a3'))
-    def supported(path):
-        try:
-            ft = FT2Font(str(path))
-            return all(ft.get_char_index(ord(ch)) != 0 for ch in glyphs)
-        except (OSError, RuntimeError, ValueError):
-            return False
-
-    paths = []
-    # This pip package installs a Korean font inside the server's site-packages.
-    try:
-        import koreanize_matplotlib
-        root = Path(koreanize_matplotlib.__file__).resolve().parent
-        paths.append(root / 'fonts' / 'NanumGothic.ttf')
-    except ImportError:
-        pass
-
-    # Only if the dependency font is unavailable, accept a locally installed
-    # font that fully covers every Korean label. Never accept a random fallback.
-    priority = ('NanumGothic','Noto Sans CJK KR','NanumBarunGothic',
-                'Malgun Gothic','AppleGothic','Noto Sans CJK JP')
-    installed = sorted(font_manager.fontManager.ttflist,
-                       key=lambda f: (priority.index(f.name) if f.name in priority
-                                      else len(priority), f.name, str(f.fname)))
-    paths.extend(Path(entry.fname) for entry in installed)
-    for font_path in paths:
-        if not font_path.is_file() or not supported(font_path):
-            continue
-        font_manager.fontManager.addfont(str(font_path))
-        # Crucial: retain fname rather than resolving by font-family string.
-        prop = font_manager.FontProperties(fname=str(font_path))
-        if Path(font_manager.findfont(prop, fallback_to_default=False)).resolve() != font_path.resolve():
-            continue
-        return prop
-    return None
-
-
 def replace_charts(parts,main,year,month,audit):
-    """Draw readable 13-month bar/line graphs at the exact template image aspect.
+    """Excel A2:C14 -> A18:C30 rules, using pre-rasterized chart text.
 
-    The first monthly data block is rows 5..40, in descending month order.
-    Never read the second chart/calculation block (the old version did).
+    All glyphs come from shipped PNG pixels, not from the Render server fonts.
+    HWPX picture IDs, page dimensions, table structure and captions stay fixed.
     """
     try:
-        import matplotlib
-        matplotlib.use('Agg')
-        import matplotlib.pyplot as plt
-        from matplotlib import font_manager
-        from matplotlib.ticker import FuncFormatter
         from PIL import Image
-        # Server fonts vary across Render builds. Prefer the NanumGothic
-        # bundled inside the declared koreanize-matplotlib Python dependency;
-        # explicitly register and validate real Hangul glyph coverage.
-        # This never switches graph labels to English or reuses old-month charts.
-        chart_font = resolve_korean_plot_font(font_manager)
-        if chart_font is None:
-            raise Reject(
-                '한글 그래프 글꼴을 찾을 수 없습니다. 서버에서 koreanize-matplotlib 의존성 '
-                '설치 여부를 확인하고 재배포하세요. 한글이 깨진 그래프는 생성하지 않습니다.'
-            )
-        # Family name alone can silently resolve to a non-Korean font on Render;
-        # pass this exact font file to EVERY text artist below.
-        plt.rcParams['axes.unicode_minus'] = False
         from excel_chart_reference import excel_chart_rows
-        # Source workbook is the original 2_3년간월별수출입 monthly data.
-        # Use exact user Excel rules: A2:C14 descending -> A18:C30 ascending;
-        # USD amounts / 1,000,000, growth rates unchanged.
+        from chart_raster_text import render_chart
         try:
-            chart_rows = excel_chart_rows(main, year, month, number)
+            chart_rows=excel_chart_rows(main,year,month,number)
         except ValueError as exc:
             raise Reject(str(exc)) from exc
-        for kind,imagekey,amount_ix,rate_ix in [('수출','BinData/image2.bmp',1,2),('수입','BinData/image3.bmp',3,4)]:
-            # The original Excel chart displays exactly A18:C30 (ascending months).
-            chart_points = chart_rows[kind]
-            values=[row[1] for row in chart_points]  # B18:B30, 백만 달러
-            rates=[row[2] for row in chart_points]   # C18:C30, %
-            labels=[row[0] for row in chart_points]  # A18:A30, YYYY.MM
-            # Match original image size and aspect to avoid layout reflow in HWPX.
+        for kind,imagekey in [('수출','BinData/image2.bmp'),('수입','BinData/image3.bmp')]:
             original=Image.open(io.BytesIO(parts[imagekey]))
             width,height=original.size
-            fig,ax=plt.subplots(figsize=(width/95,height/95),dpi=170)
-            fig.patch.set_facecolor('white');ax.set_facecolor('white')
-            bars=ax.bar(range(13),values,width=.59,color='#4776BD',zorder=2)
-            vmax=max(values)
-            ax.set_ylim(0,vmax*1.21)
-            ax.grid(axis='y',color='#D9DEE6',linewidth=.8,zorder=0)
-            ax.spines[['top','right','left']].set_visible(False)
-            ax.spines['bottom'].set_color('#B6C0CB')
-            ax.tick_params(axis='y',labelsize=8,length=0)
-            ax.yaxis.set_major_formatter(FuncFormatter(lambda y,pos:f'{y:,.0f}'))
-            ax.set_xticks(range(13));ax.set_xticklabels(labels,rotation=38,ha='right',fontsize=7.4)
-            ax.tick_params(axis='x',length=0,pad=5)
-            ax2=ax.twinx()
-            lo,hi=min(rates),max(rates)
-            spread=max(hi-lo,8)
-            ax2.set_ylim(lo-spread*.26,hi+spread*.29)
-            ax2.spines[['top','left','right']].set_visible(False)
-            ax2.tick_params(axis='y',length=0,labelsize=8)
-            ax2.plot(range(13),rates,color='#EE7D28',marker='s',markersize=3.6,
-                     linewidth=2,zorder=3)
-            # Value and rate annotations are drawn AFTER axes are laid out,
-            # using pixel-space collision checks. They cannot obscure each other.
-            from matplotlib.lines import Line2D
-            from matplotlib.patches import Patch
-            lab1=f'{kind}액(좌측)'
-            lab2='전년동월비 증감률(우측)'
-            ax.text(-.09,1.025,'(백만 달러)',transform=ax.transAxes,fontsize=8,ha='left',va='bottom')
-            ax2.text(1.065,1.025,'(%)',transform=ax2.transAxes,fontsize=8,ha='right',va='bottom')
-            legend_font = chart_font.copy(); legend_font.set_size(8.8)
-            fig.legend([Patch(color='#4776BD'),Line2D([0],[0],color='#EE7D28',marker='s',linewidth=2)],
-                       [lab1,lab2],loc='upper center',ncol=2,frameon=False,prop=legend_font,
-                       bbox_to_anchor=(.5,.995))
-            fig.subplots_adjust(top=.87,bottom=.22,left=.092,right=.91)
-            # Apply explicit font-file choice to legend, units, ticks, amounts,
-            # date labels and callouts. Font names / Matplotlib caches on Linux
-            # are intentionally NOT trusted. No font is bundled with the app.
-            from matplotlib.text import Text
-            import os
-            chart_font_path = os.path.realpath(chart_font.get_file())
-            # Set the explicit file BEFORE the very first drawing operation.
-            # Numeric tick labels created lazily may use default fonts, but all
-            # Korean-bearing text is already present in the artist tree.
-            for artist in fig.findobj(match=Text):
-                artist.set_fontproperties(chart_font)
-            fig.canvas.draw()
-            # Find safe pixel-space positions only after final axis geometry
-            # and font metrics have been established by the initial render.
-            from chart_label_layout import place_labels
-            layout = place_labels(fig,ax,ax2,values,rates,chart_font)
-            # Tick labels can be created lazily during first draw. Apply the
-            # verified file font again to all text, including both axes.
-            for artist in fig.findobj(match=Text):
-                artist.set_fontproperties(chart_font)
-            fig.canvas.draw()
-            korean_artists = [artist for artist in fig.findobj(match=Text)
-                              if any('가' <= ch <= '힣' for ch in artist.get_text())]
-            if not korean_artists or any(os.path.realpath(artist.get_fontproperties().get_file() or '')
-                                         != chart_font_path for artist in korean_artists):
-                plt.close(fig)
-                raise Reject('그래프의 한글 글꼴 적용을 검증하지 못해 생성 중단')
-            # No duplicate chart title: document already prints its figure caption.
-            buf=io.BytesIO();fig.savefig(buf,format='png',dpi=170,facecolor='white');plt.close(fig)
-            img=Image.open(io.BytesIO(buf.getvalue())).convert('RGB')
-            img=img.resize((width*2,height*2),Image.Resampling.LANCZOS)
-            bmp=io.BytesIO();img.save(bmp,format='BMP');parts[imagekey]=bmp.getvalue()
-            audit.note(f'{imagekey}: v38 엑셀 기준 {kind} 그래프 생성 (13개월 {labels[0]}~{labels[-1]}, 한글 글꼴 및 수치 레이블 충돌 회피, 금액 레이블 {layout["moved_amount_labels"]}개 자동 위치 조정)')
-    except (ImportError,Reject) as e:
-        # Never retain a graph from the prior reporting month if chart building fails.
-        raise Reject(f'월별 그래프를 검증된 자료로 작성할 수 없습니다: {e}')
+            image=render_chart(kind,chart_rows[kind],(width*2,height*2))
+            if image.size!=(width*2,height*2):
+                raise Reject(f'{kind} 차트 그림 크기 불일치')
+            bmp=io.BytesIO();image.save(bmp,format='BMP')
+            # Guard against unchanged graph assets accidentally surviving.
+            if bmp.getvalue()==parts[imagekey]:
+                raise Reject(f'{kind} 그래프 그림이 갱신되지 않았습니다')
+            parts[imagekey]=bmp.getvalue()
+            labels=[row[0] for row in chart_rows[kind]]
+            audit.note(f'{imagekey}: v39 {kind} 그래프 생성 · 글꼴 미사용 PNG 문자 렌더링 · {labels[0]}~{labels[-1]}')
+    except (ImportError,ValueError,FileNotFoundError,OSError,Reject) as exc:
+        raise Reject(f'한글이 깨질 수 있는 그래프는 생성하지 않습니다: {exc}') from exc
 
 def validate_main_schema(main):
     # Fail closed if the association changes a table layout/column meaning.

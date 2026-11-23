@@ -74,7 +74,7 @@ class Handler(BaseHTTPRequestHandler):
         if path.path=='/kstat/status':
             self.json(200,integration_status())
         elif path.path=='/health':
-            self.json(200,{'status':'ok','version':'v38-readable-labels','charts':'excel-A2-C14-to-A18-C30','font':'verified-korean'})
+            self.json(200,{'status':'ok','version':'v39-rasterized-chart-text','charts':'excel-A2-C14-to-A18-C30','font':'pre-rendered-glyph-png-no-server-font'})
         elif path.path in ('/','/guide','/report'):
             pages={'/':'index.html','/guide':'guide.html','/report':'report.html'}
             self.sendbytes(200,(ROOT/'static'/pages[path.path]).read_bytes(),'text/html; charset=utf-8')
