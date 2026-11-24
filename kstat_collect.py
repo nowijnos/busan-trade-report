@@ -112,6 +112,12 @@ def classify(named_files,main_data,main_name,require_complete=False):
         except (Reject,ValueError,KeyError) as exc:
             warnings.append(f'{name}: K-Stat 원본 판독 불가 ({str(exc)[:140]})')
             continue
+        # Header-only and mismatched product-code exports must never count as
+        # a successful source. K-Stat can deliver a valid XLS container with
+        # no usable MTI rows when a search has not refreshed.
+        if not stat.rows:
+            warnings.append(f'{name}: 조회 결과의 유효한 MTI 품목 행이 0건입니다. 조회 후 표가 갱신되었는지 확인하세요 (빈 표 또는 품목 코드 자릿수 불일치 가능).')
+            continue
         marker=(stat.level,stat.is_china,stat.year,stat.month,stat.interval)
         sort_match=__import__('re').search(r'정렬\s*:\s*(수출금액|수입금액)',stat.meta)
         source_sort=sort_match.group(1) if sort_match else None
