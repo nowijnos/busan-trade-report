@@ -1,0 +1,15 @@
+v44 — 국가별 K-Stat 조회조건 및 단위 수정
+
+수정된 파일: background.js, kstat_country_analysis.js, report_bridge.js (크롬 확장)
+               static/assets/analysis.js, static/analysis.html, static/index.html, server.py (웹)
+
+- K-Stat 국가별 화면(ProdCtrImpExpList.screen)에서 단위 US$, %를 선택값 추정이 아니라 보이는 항목명으로 확인해 지정
+- 조회 전 지역(60), 품목코드, MTI 자릿수, 연월, 당월/누계, 수출·수입 정렬 및 단위 확인
+- 국가별 결과표가 발견되어도 K-Stat 지역명 전국이 유지되면 부산 적용 성공으로 단정하지 않음
+- 지역·품목 입력칸 탐색 강화 및 실패 원인 표시
+- 기존 보고서 자동작성, 뉴스 검색, 분석 보고서, 9종 자료 수집 로직 수정 없음
+
+테스트: Chromium 모의 K-Stat 화면에서 MTI 741/부산(60)/2026-10/수출/단위 US$, % 정상 선택;
+단위 선택지가 없으면 명확히 중단. JS 정적 문법/서버 경로 및 ZIP 검증.
+제한: 실제 K-Stat 서버에서 실행·응답 검증 불가 (외부 사이트 브라우저 접근 제한).
+      K-Stat 국가별 화면에서 지역명 '전국'이 지속된다면 실제 부산 선택은 수동 확정이 필요할 수 있음.
