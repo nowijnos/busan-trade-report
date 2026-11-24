@@ -139,8 +139,60 @@ def parse_files(named):
     return {'ok':bool(rows),'rows':rows,'issues':issues,'sources':sources,'count':len(rows)}
 
 
+def make_news_docx(payload):
+    """Separate news-investigation document; no K-Stat connection or auto-verified claims."""
+    from docx import Document
+    from docx.shared import Pt, Cm
+    from docx.oxml.ns import qn
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    doc=Document()
+    sec=doc.sections[0]
+    sec.top_margin=sec.bottom_margin=Cm(2)
+    sec.left_margin=sec.right_margin=Cm(2.2)
+    normal=doc.styles['Normal']
+    normal.font.name='Malgun Gothic'
+    normal.font.size=Pt(9.5)
+    normal._element.get_or_add_rPr().rFonts.set(qn('w:eastAsia'),'맑은 고딕')
+    normal.paragraph_format.space_after=Pt(7)
+    title=str(payload.get('title') or '수출입동향 관련 뉴스 조사')[:120]
+    doc.add_heading(title, 0)
+    doc.add_paragraph('작성일: '+datetime.datetime.now().strftime('%Y-%m-%d')+'  |  작성자 확인 자료 기반')
+    c=payload.get('condition') if isinstance(payload.get('condition'), dict) else {}
+    doc.add_heading('1. 조사 대상', 1)
+    values=[('지역',c.get('region','')),('품목',c.get('product','')),('국가',', '.join(c.get('countries',[]) or [])),
+            ('수출/수입',c.get('trade','')),('관심 시기',c.get('period','')),('변화 유형',c.get('change',''))]
+    for key,v in values:
+        if v: doc.add_paragraph(f'{key}: {str(v)[:160]}')
+    doc.add_heading('2. 관련 뉴스',1)
+    articles=payload.get('articles') if isinstance(payload.get('articles'),list) else []
+    if articles:
+        for a in articles[:40]:
+            if not isinstance(a,dict): continue
+            p=doc.add_paragraph(style='List Bullet')
+            p.add_run(str(a.get('title') or '제목 미기재')[:240]).bold=True
+            date=str(a.get('date') or '발행일 미기재')[:40]
+            doc.add_paragraph('발행일: '+date)
+            doc.add_paragraph('원문: '+str(a.get('url') or '링크 미기재')[:450])
+            summary=str(a.get('summary') or '').strip()
+            if summary: doc.add_paragraph('요약: '+summary[:1300])
+    else: doc.add_paragraph('확인한 기사 기록이 없습니다.')
+    doc.add_heading('3. 통계 사실 및 조사 메모',1)
+    doc.add_paragraph(str(payload.get('analysis') or '메모 미작성')[:16000])
+    doc.add_heading('4. 해석 및 추가 확인사항',1)
+    doc.add_paragraph(str(payload.get('hypothesis') or '추가 확인사항 미작성')[:12000])
+    doc.add_heading('5. 자료 확인 유의사항',1)
+    doc.add_paragraph('뉴스 검색어는 관련 기사 탐색을 돕는 도구입니다. 실제 기사 내용과 수출입 통계의 연월, 국가, 품목 분류, 수치는 작성자가 원문을 확인해야 합니다.')
+    doc.add_paragraph('국가별 수출입액이 동시에 변화했다는 사실만으로 물량이 한 국가에서 다른 국가로 이전했다고 단정할 수 없습니다.')
+    foot=sec.footer.paragraphs[0]
+    foot.alignment=WD_ALIGN_PARAGRAPH.CENTER
+    foot.add_run('수출입동향 관련 뉴스 조사 | 작성자 검토 필요')
+    b=io.BytesIO();doc.save(b);return b.getvalue()
+
+
 def make_docx(payload):
     """Generate editable source-traceable report, never claim automatic fact verification."""
+    if isinstance(payload, dict) and payload.get("mode") == "news_only":
+        return make_news_docx(payload)
     from docx import Document
     from docx.shared import Pt,Cm,RGBColor
     from docx.enum.text import WD_ALIGN_PARAGRAPH

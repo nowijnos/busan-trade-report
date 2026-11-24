@@ -1,30 +1,60 @@
- 'use strict';
-const $=id=>document.getElementById(id);const state={catalog:[],product:'',articles:[],lastAttempt:null};
-function status(id,s){$(id).textContent=String(s||'');}function val(id){return $(id).value.trim();}
-async function loadCatalog(){try{const r=await fetch('/analysis/catalog');const a=await r.json();state.catalog=Array.isArray(a)?a:[];}catch(_){state.catalog=[];}}
-loadCatalog();
-function choice(c){$('productInput').value=c.name||'';$('code').value=String(c.code||'');$('family').value=c.family||'MTI';const level=String(c.level||String(c.code||'').length);if([...$('level').options].some(x=>x.value===level))$('level').value=level;state.product=c.name||'';$('productResults').replaceChildren();status('productHint',`${c.name} · ${c.family||'MTI'} ${c.code} 선택됨`);}
-function searchCatalog(){const q=val('productInput').toLowerCase(),list=$('productResults');list.replaceChildren();if(!q)return;const match=state.catalog.filter(c=>[c.name,c.code].some(x=>String(x||'').toLowerCase().includes(q))).slice(0,18);match.forEach(c=>{const b=document.createElement('button');b.type='button';b.className='secondary';b.textContent=`${c.name} · ${c.family} ${c.code}`;b.addEventListener('click',()=>choice(c));list.append(b);});status('productHint',match.length?`후보 ${match.length}개. 클릭해 정확한 코드 선택 (전체 품목 사전 아님)`:'내장 후보가 없습니다. 공식 K-Stat 품목코드 검색으로 확인하거나 코드를 직접 입력해 주세요.');}
-$('findProduct').onclick=searchCatalog;$('productInput').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();searchCatalog();}});
-function condition(){const month=val('month');return {region:'부산',regionCode:val('region'),trade:val('trade')==='export'?'수출':'수입',tradeCode:val('trade'),product:(state.product&&state.product===val('productInput')?state.product:val('productInput'))||val('code'),code:val('code'),family:val('family'),level:Number(val('level')),interval:val('interval'),period:month,countries:[],comparison:'전년 동월'};}
-const SOURCE_URL='https://stat.kita.net/stat/kts/prod/ProdCtrImpExpList.screen';
-$('openKstat').onclick=()=>{
- const c=condition();if(!/^20\d\d-(0[1-9]|1[0-2])$/.test(c.period)){status('queryStatus','조회 연월을 선택해 주세요.');return;}
- if(!/^\d{2,10}$/.test(c.code)||c.code.length!==c.level){status('queryStatus',`품목코드를 ${c.level}자리 숫자로 입력해 주세요. 예: MTI 3단위 741`);return;}
- if(c.family!=='MTI'||![2,3,4,6].includes(c.level)){status('queryStatus','현재 자동조회는 MTI 2/3/4/6단위만 대상으로 합니다. HS/HSK는 K-Stat에서 직접 선택해 주세요.');return;}
- if(c.regionCode!=='60'){status('queryStatus','다른 지역 코드는 아직 검증되지 않았습니다. K-Stat에서 직접 선택해 주세요.');return;}
- const id='q'+Math.random().toString(36).slice(2);state.lastAttempt={id,condition:c};
- status('queryStatus','크롬 도우미를 통해 K-Stat 국가별 화면을 열고 조건 입력·조회 클릭을 요청했어. 새 탭에서 결과가 표시되는지 확인해 줘.');
- if(document.documentElement.dataset.analysisBridge!=='v44'){status('queryStatus','연결된 크롬 도우미 v44가 없어 자동조회할 수 없습니다. v44를 설치하고 분석실을 새로고침해 주세요.');return;}
- window.postMessage({type:'BUSAN_ANALYSIS_COUNTRY_REQUEST_V44',payload:{requestId:id,region:'60',code:c.code,family:c.family,level:c.level,year:Number(c.period.slice(0,4)),month:Number(c.period.slice(5)),trade:c.tradeCode,interval:c.interval}},location.origin);
-};
-window.addEventListener('message',e=>{if(e.source!==window||e.origin!==location.origin||e.data?.type!=='BUSAN_ANALYSIS_COUNTRY_RESULT_V44')return;const data=e.data.payload||{};if(!state.lastAttempt||data.requestId!==state.lastAttempt.id)return;status('queryStatus',(data.ok?'자동 조회 요청 실행: ':'조회가 끝나지 않았어: ')+(data.message||'확인된 결과 없음')+'\nK-Stat 탭에서 품목·지역·연월·국가별 결과를 반드시 확인해 주세요.');});
-function newsTerms(){const c=condition(),country=val('newsCountry')||'관심 국가',item=val('newsExtra')||c.product||'품목',change=val('change'),topic=val('newsTopic'),p=c.period.replace('-','년 ')+'월';return [...new Set([`${country} ${item} ${c.trade} ${change}`,`부산 ${country} ${item} ${c.trade} ${change} ${p}`,`${country} ${item} ${c.trade} ${topic||'시장 동향'}`,`${item} ${country} ${change} 기업 정책 물류`])];}
-$('makeNews').onclick=()=>{const box=$('newsQueries');box.replaceChildren();newsTerms().forEach(term=>{const wrap=document.createElement('div');wrap.className='item';const strong=document.createElement('strong');strong.textContent=term;wrap.append(strong);const actions=document.createElement('div');actions.className='actions';for(const [label,base] of [['네이버 뉴스','https://search.naver.com/search.naver?where=news&query='],['구글 뉴스','https://news.google.com/search?q=']]){const a=document.createElement('a');a.className='linkbtn secondary';a.target='_blank';a.rel='noopener';a.href=base+encodeURIComponent(term);a.textContent=label;actions.append(a);}wrap.append(actions);box.append(wrap);});};
-$('saveArticle').onclick=()=>{const title=val('articleTitle'),url=val('articleUrl');if(!title||!/^https?:\/\/[^/]+/i.test(url)){alert('실제로 읽은 기사의 제목과 http(s) 원문 주소를 입력해 주세요.');return;}state.articles.push({title,url,date:val('articleDate'),summary:val('articleSummary')});['articleTitle','articleUrl','articleDate','articleSummary'].forEach(id=>$(id).value='');paintArticles();};
-function paintArticles(){const b=$('articleList');b.replaceChildren();state.articles.forEach((a,i)=>{const box=document.createElement('div');box.className='item';const title=document.createElement('strong');title.textContent=a.title;const aLink=document.createElement('a');aLink.href=a.url;aLink.target='_blank';aLink.rel='noopener noreferrer';aLink.textContent=a.url;const summ=document.createElement('div');summ.textContent=(a.date||'날짜 미기록')+' · '+a.summary;const del=document.createElement('button');del.type='button';del.className='secondary';del.textContent='삭제';del.onclick=()=>{state.articles.splice(i,1);paintArticles();};box.append(title,aLink,summ,del);b.append(box);});}
-function payload(){let c=condition();c.countries=val('newsCountry')?[val('newsCountry')]:[];return {title:val('reportTitle'),condition:c,analysis:val('analysisText'),hypothesis:val('hypothesisText'),articles:state.articles,rows:[],sources:[`K-Stat 국가별 지자체 수출입 조회: ${SOURCE_URL} (통계 수치·조건은 작성자가 확인하여 기재)`]};}
-$('downloadDocx').onclick=async()=>{const b=$('downloadDocx');b.disabled=true;status('reportStatus','Word 보고서 생성 중…');try{const r=await fetch('/analysis/report',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload())});if(!r.ok){const j=await r.json();throw Error(j.error||'보고서 생성 실패');}const blob=await r.blob();const u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download='부산_품목별_국가별_특별분석보고서.docx';a.click();setTimeout(()=>URL.revokeObjectURL(u),10000);status('reportStatus','다운로드를 요청했어. 입력한 통계·기사·원인 가설을 최종 검토해 줘.');}catch(e){status('reportStatus','보고서 생성 오류: '+e.message);}finally{b.disabled=false;}};
-$('downloadJson').onclick=()=>{const u=URL.createObjectURL(new Blob([JSON.stringify(payload(),null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=u;a.download='수출입동향_조사메모.json';a.click();setTimeout(()=>URL.revokeObjectURL(u),10000);};
-function escapeHTML(s){return String(s||'').replace(/[&<>"']/g,x=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[x]));}
-$('printReport').onclick=()=>{const p=payload();const articles=p.articles.map(a=>`<p><b>${escapeHTML(a.title)}</b> (${escapeHTML(a.date)})<br>${escapeHTML(a.summary)}<br>${escapeHTML(a.url)}</p>`).join('')||'<p>기록한 기사 없음</p>';const html=`<!doctype html><html lang="ko"><meta charset="utf-8"><title>${escapeHTML(p.title)}</title><style>body{font:12px/1.8 'Malgun Gothic',sans-serif;margin:50px;color:#21354a}h1{font-size:23px}h2{border-bottom:1px solid #ddd;margin-top:24px}pre{white-space:pre-wrap;font:inherit}@media print{body{margin:15mm}}</style><h1>${escapeHTML(p.title)}</h1><h2>조회 범위</h2><pre>${escapeHTML(JSON.stringify(p.condition,null,2))}</pre><h2>통계 분석</h2><pre>${escapeHTML(p.analysis)}</pre><h2>확인한 뉴스</h2>${articles}<h2>원인 가설 및 추가 확인</h2><pre>${escapeHTML(p.hypothesis)}</pre><p>통계 출처: ${escapeHTML(SOURCE_URL)} / 조회 수치·기사 검증은 작성자 책임</p></html>`;const u=URL.createObjectURL(new Blob([html],{type:'text/html'}));const w=window.open(u,'_blank');if(!w)alert('팝업이 차단됐습니다. 팝업을 허용한 뒤 다시 눌러주세요.');setTimeout(()=>URL.revokeObjectURL(u),60000);};
+'use strict';
+const $=id=>document.getElementById(id);
+const value=id=>$(id).value.trim();
+const state={articles:[],queries:[]};
+function text(id,s){$(id).textContent=String(s||'');}
+function situation(){return {region:value('region'),country:value('country'),product:value('product'),trade:value('trade'),change:value('change'),period:value('period'),topic:value('topic'),extra:value('extra')};}
+function makeTerms(){
+ const s=situation();
+ if(!s.product){text('newsQueries','품목명 또는 키워드를 입력해 주세요.');state.queries=[];return;}
+ const basic=[s.country,s.product,s.trade,s.change].filter(Boolean).join(' ');
+ const period=s.period?`${s.period.slice(0,4)}년 ${Number(s.period.slice(5))}월`:'';
+ const list=[basic,
+    [s.region,s.country,s.product,s.trade,s.change,period].filter(Boolean).join(' '),
+    [s.country,s.product,s.trade,s.topic||'시장 동향'].filter(Boolean).join(' '),
+    [s.product,s.country,s.trade,s.extra||'기업 정책 물류'].filter(Boolean).join(' ')];
+ state.queries=[...new Set(list.filter(Boolean))];
+ const target=$('newsQueries');target.replaceChildren();
+ for(const query of state.queries){
+  const box=document.createElement('div');box.className='query';
+  const name=document.createElement('strong');name.textContent=query;
+  const buttons=document.createElement('div');buttons.className='buttons';
+  for(const [label,prefix] of [['네이버 뉴스','https://search.naver.com/search.naver?where=news&query='],['구글 뉴스','https://news.google.com/search?q=']]){
+   const a=document.createElement('a');a.href=prefix+encodeURIComponent(query);a.target='_blank';a.rel='noopener noreferrer';a.className='linkbtn secondary';a.textContent=label;buttons.append(a);
+  }
+  const copy=document.createElement('button');copy.type='button';copy.className='secondary';copy.textContent='검색어 복사';copy.onclick=()=>navigator.clipboard.writeText(query).then(()=>{copy.textContent='복사됨';}).catch(()=>{window.prompt('검색어 복사',query);});buttons.append(copy);
+  box.append(name,buttons);target.append(box);
+ }
+}
+$('makeNews').addEventListener('click',makeTerms);
+$('clearNews').addEventListener('click',()=>{for(const id of ['country','product','period','extra'])$(id).value='';for(const [id,v] of [['trade','수출'],['change','증가'],['topic',''],['region','부산']])$(id).value=v;state.queries=[];$('newsQueries').replaceChildren();});
+for(const id of ['country','product','extra'])$(id).addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();makeTerms();}});
+function articleList(){const list=$('articleList');list.replaceChildren();for(const [i,a] of state.articles.entries()){
+ const el=document.createElement('div');el.className='article';const info=document.createElement('div');
+ const title=document.createElement('strong');title.textContent=a.title;
+ const link=document.createElement('a');link.href=a.url;link.target='_blank';link.rel='noopener noreferrer';link.textContent=a.url;
+ const detail=document.createElement('small');detail.textContent=[a.date||'발행일 미기록',a.summary].filter(Boolean).join(' · ');
+ const del=document.createElement('button');del.type='button';del.className='secondary';del.textContent='삭제';del.onclick=()=>{state.articles.splice(i,1);articleList();};
+ info.append(title,link,detail);el.append(info,del);list.append(el);
+}}
+$('saveArticle').addEventListener('click',()=>{
+ const title=value('articleTitle'),url=value('articleUrl');
+ try{if(!title||!['http:','https:'].includes(new URL(url).protocol))throw Error('missing');}catch(_){alert('기사 제목과 http(s)로 시작하는 기사 원문 주소를 입력해 주세요.');return;}
+ state.articles.push({title,url,date:value('articleDate'),summary:value('articleSummary')});
+ for(const id of ['articleTitle','articleUrl','articleDate','articleSummary'])$(id).value='';articleList();
+});
+function payload(){const s=situation();return {mode:'news_only',title:value('reportTitle'),condition:{region:s.region,countries:s.country?[s.country]:[],product:s.product,trade:s.trade,period:s.period,change:s.change,topic:s.topic,extra:s.extra},queries:state.queries,analysis:value('analysisText'),hypothesis:value('hypothesisText'),articles:state.articles,sources:[],rows:[]};}
+$('downloadDocx').addEventListener('click',async()=>{
+ const btn=$('downloadDocx');btn.disabled=true;text('reportStatus','Word 보고서 생성 중…');
+ try{const r=await fetch('/analysis/report',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload())});
+ if(!r.ok){let j={};try{j=await r.json();}catch(_){}throw Error(j.error||'보고서 생성 실패');}
+ const u=URL.createObjectURL(await r.blob());const a=document.createElement('a');a.href=u;a.download='수출입동향_관련뉴스_조사보고서.docx';a.click();setTimeout(()=>URL.revokeObjectURL(u),12000);text('reportStatus','Word 보고서 다운로드를 요청했어. 기사 내용과 통계 사실을 최종 확인해 줘.');}
+ catch(e){text('reportStatus','보고서 생성 오류: '+e.message);}finally{btn.disabled=false;}
+});
+$('downloadJson').addEventListener('click',()=>{const u=URL.createObjectURL(new Blob([JSON.stringify(payload(),null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=u;a.download='수출입동향_뉴스조사_메모.json';a.click();setTimeout(()=>URL.revokeObjectURL(u),12000);});
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+$('printReport').addEventListener('click',()=>{
+ const p=payload(),s=p.condition;const items=p.articles.map(a=>`<div class="article"><b>${esc(a.title)}</b> (${esc(a.date||'발행일 미확인')})<p>${esc(a.summary)}</p><small>${esc(a.url)}</small></div>`).join('')||'<p>기사 기록 없음</p>';
+ const content=`<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>${esc(p.title)}</title><style>body{font:12px/1.7 'Malgun Gothic',sans-serif;color:#243d51;margin:14mm}h1{font-size:23px}h2{font-size:16px;border-bottom:1px solid #ccc;padding-bottom:5px;margin-top:20px}pre{font:inherit;white-space:pre-wrap}.article{page-break-inside:avoid;margin:12px 0}small{overflow-wrap:anywhere}@media print{body{margin:12mm}}</style></head><body><h1>${esc(p.title)}</h1><p>품목 ${esc(s.product)} · 국가 ${esc(s.countries.join(', '))} · ${esc(s.trade)} · ${esc(s.period)}</p><h2>관련 뉴스</h2>${items}<h2>통계 확인 및 조사 메모</h2><pre>${esc(p.analysis||'미작성')}</pre><h2>해석 및 추가 확인사항</h2><pre>${esc(p.hypothesis||'미작성')}</pre><p><small>통계와 기사 내용을 작성자가 확인해야 하며 뉴스 검색 결과 자체는 사실 검증이 아닙니다.</small></p></body></html>`;
+ const u=URL.createObjectURL(new Blob([content],{type:'text/html'}));if(!window.open(u,'_blank'))alert('팝업이 차단됐습니다. 팝업을 허용한 뒤 다시 눌러주세요.');setTimeout(()=>URL.revokeObjectURL(u),60000);
+});
