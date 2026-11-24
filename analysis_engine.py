@@ -153,7 +153,7 @@ def make_docx(payload):
     normal.paragraph_format.space_after=Pt(6)
     title=str(payload.get('title') or '수출입동향 특별 분석보고서').strip()[:120]
     doc.add_heading(title,0)
-    doc.add_paragraph('작성일: '+datetime.datetime.now().strftime('%Y-%m-%d')+'  |  데이터: 사용자가 불러온 K-Stat·정리 자료')
+    doc.add_paragraph('작성일: '+datetime.datetime.now().strftime('%Y-%m-%d')+'  |  데이터: 작성자가 직접 확인한 K-Stat·뉴스·분석 메모')
     doc.add_paragraph('주의: 통계 사실, 기사 내용, 추정은 구분하여 기재했습니다. 자료의 기간·품목 분류·국가·출처를 최종 확인하세요.')
     condition=payload.get('condition') if isinstance(payload.get('condition'),dict) else {}
     doc.add_heading('1. 분석 범위',level=1)

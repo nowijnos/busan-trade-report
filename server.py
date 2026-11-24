@@ -75,7 +75,7 @@ class Handler(BaseHTTPRequestHandler):
         if path.path=='/kstat/status':
             self.json(200,integration_status())
         elif path.path=='/health':
-            self.json(200,{'status':'ok','version':'v42-analysis-studio','charts':'excel-A2-C14-to-A18-C30','font':'pre-rendered-glyph-png-no-server-font'})
+            self.json(200,{'status':'ok','version':'v43-country-search','charts':'excel-A2-C14-to-A18-C30','font':'pre-rendered-glyph-png-no-server-font'})
         elif path.path in ('/','/guide','/report','/analysis'):
             pages={'/':'index.html','/guide':'guide.html','/report':'report.html','/analysis':'analysis.html'}
             self.sendbytes(200,(ROOT/'static'/pages[path.path]).read_bytes(),'text/html; charset=utf-8')
@@ -94,7 +94,7 @@ class Handler(BaseHTTPRequestHandler):
             mime={'.svg':'image/svg+xml','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.zip':'application/zip','.css':'text/css','.js':'text/javascript'}.get(ext)
             if not mime:
                 self.json(404,{'error':'지원하지 않는 파일입니다.'});return
-            extra={'Content-Disposition':"attachment; filename=busan-trade-report-helper-v42.zip"} if ext=='.zip' else None
+            extra={'Content-Disposition':"attachment; filename=busan-trade-report-helper-v43.zip"} if ext=='.zip' else None
             self.sendbytes(200,item.read_bytes(),mime,extra)
         elif path.path=='/download':
             clean_cache()
