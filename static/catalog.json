@@ -1,0 +1,1340 @@
+[
+  {
+    "family": "HSK",
+    "level": 10,
+    "code": "0304871000",
+    "name": "참다랑어"
+  },
+  {
+    "family": "HSK",
+    "level": 10,
+    "code": "0304879000",
+    "name": "기타"
+  },
+  {
+    "family": "HSK",
+    "level": 10,
+    "code": "0304991000",
+    "name": "냉동 연육"
+  },
+  {
+    "family": "HSK",
+    "level": 10,
+    "code": "0306171090",
+    "name": "기타"
+  },
+  {
+    "family": "HSK",
+    "level": 10,
+    "code": "0307432090",
+    "name": "기타"
+  },
+  {
+    "family": "HSK",
+    "level": 10,
+    "code": "0307522000",
+    "name": "낙지"
+  },
+  {
+    "family": "HSK",
+    "level": 10,
+    "code": "1902301010",
+    "name": "라면"
+  },
+  {
+    "family": "HSK",
+    "level": 10,
+    "code": "2603000000",
+    "name": "구리광과 그 정광(精鑛)"
+  },
+  {
+    "family": "HSK",
+    "level": 10,
+    "code": "3307904000",
+    "name": "마스크 팩"
+  },
+  {
+    "family": "HSK",
+    "level": 10,
+    "code": "7202930000",
+    "name": "페로니오븀(ferro-niobium)"
+  },
+  {
+    "family": "HSK",
+    "level": 10,
+    "code": "7204490000",
+    "name": "기타"
+  },
+  {
+    "family": "HSK",
+    "level": 10,
+    "code": "7208399000",
+    "name": "기타"
+  },
+  {
+    "family": "HSK",
+    "level": 10,
+    "code": "7210702000",
+    "name": "두께가 4.75밀리미터 미만의 것"
+  },
+  {
+    "family": "HSK",
+    "level": 10,
+    "code": "7225999000",
+    "name": "기타"
+  },
+  {
+    "family": "HSK",
+    "level": 10,
+    "code": "7307290000",
+    "name": "기타"
+  },
+  {
+    "family": "HSK",
+    "level": 10,
+    "code": "7307930000",
+    "name": "바트(butt)용접용 연결구"
+  },
+  {
+    "family": "HSK",
+    "level": 10,
+    "code": "7326909000",
+    "name": "기타"
+  },
+  {
+    "family": "HSK",
+    "level": 10,
+    "code": "8409999000",
+    "name": "기타"
+  },
+  {
+    "family": "HSK",
+    "level": 10,
+    "code": "8412211000",
+    "name": "액압실린더"
+  },
+  {
+    "family": "HSK",
+    "level": 10,
+    "code": "8413709090",
+    "name": "기타"
+  },
+  {
+    "family": "HSK",
+    "level": 10,
+    "code": "8481801090",
+    "name": "기타"
+  },
+  {
+    "family": "HSK",
+    "level": 10,
+    "code": "8483409090",
+    "name": "기타"
+  },
+  {
+    "family": "HSK",
+    "level": 10,
+    "code": "8501311010",
+    "name": "출력이 100와트 이하인 것"
+  },
+  {
+    "family": "HSK",
+    "level": 10,
+    "code": "8503002010",
+    "name": "풍력발전기용"
+  },
+  {
+    "family": "HSK",
+    "level": 10,
+    "code": "8507602000",
+    "name": "전기차(하이브리드형을 포함한다)용"
+  },
+  {
+    "family": "HSK",
+    "level": 10,
+    "code": "8537105090",
+    "name": "기타"
+  },
+  {
+    "family": "HSK",
+    "level": 10,
+    "code": "8544492090",
+    "name": "기타"
+  },
+  {
+    "family": "HSK",
+    "level": 10,
+    "code": "8703401000",
+    "name": "신차"
+  },
+  {
+    "family": "HSK",
+    "level": 10,
+    "code": "8703801000",
+    "name": "신차"
+  },
+  {
+    "family": "HSK",
+    "level": 10,
+    "code": "8708290000",
+    "name": "기타"
+  },
+  {
+    "family": "HSK",
+    "level": 10,
+    "code": "8807301000",
+    "name": "비행기의 부분품"
+  },
+  {
+    "family": "HSK",
+    "level": 10,
+    "code": "8901200000",
+    "name": "탱커(tanker)"
+  },
+  {
+    "family": "HSK",
+    "level": 10,
+    "code": "8901901000",
+    "name": "화물선"
+  },
+  {
+    "family": "HSK",
+    "level": 10,
+    "code": "9032894091",
+    "name": "반도체 제조용 기기의 것"
+  },
+  {
+    "family": "HSK",
+    "level": 10,
+    "code": "9032909000",
+    "name": "기타"
+  },
+  {
+    "family": "HSK",
+    "level": 10,
+    "code": "9306309000",
+    "name": "기타"
+  },
+  {
+    "family": "MTI",
+    "level": 2,
+    "code": "01",
+    "name": "농산물"
+  },
+  {
+    "family": "MTI",
+    "level": 2,
+    "code": "02",
+    "name": "축산물"
+  },
+  {
+    "family": "MTI",
+    "level": 2,
+    "code": "03",
+    "name": "임산물"
+  },
+  {
+    "family": "MTI",
+    "level": 2,
+    "code": "04",
+    "name": "수산물"
+  },
+  {
+    "family": "MTI",
+    "level": 2,
+    "code": "11",
+    "name": "금속광물"
+  },
+  {
+    "family": "MTI",
+    "level": 2,
+    "code": "12",
+    "name": "비금속광물"
+  },
+  {
+    "family": "MTI",
+    "level": 2,
+    "code": "13",
+    "name": "광물성연료"
+  },
+  {
+    "family": "MTI",
+    "level": 2,
+    "code": "19",
+    "name": "기타광산물"
+  },
+  {
+    "family": "MTI",
+    "level": 2,
+    "code": "21",
+    "name": "석유화학제품"
+  },
+  {
+    "family": "MTI",
+    "level": 2,
+    "code": "22",
+    "name": "정밀화학제품"
+  },
+  {
+    "family": "MTI",
+    "level": 2,
+    "code": "23",
+    "name": "비료"
+  },
+  {
+    "family": "MTI",
+    "level": 2,
+    "code": "24",
+    "name": "요업제품"
+  },
+  {
+    "family": "MTI",
+    "level": 2,
+    "code": "25",
+    "name": "제지원료및종이제품"
+  },
+  {
+    "family": "MTI",
+    "level": 2,
+    "code": "26",
+    "name": "석면및운모제품"
+  },
+  {
+    "family": "MTI",
+    "level": 2,
+    "code": "27",
+    "name": "마찰및연마제품"
+  },
+  {
+    "family": "MTI",
+    "level": 2,
+    "code": "29",
+    "name": "기타화학공업제품"
+  },
+  {
+    "family": "MTI",
+    "level": 2,
+    "code": "31",
+    "name": "플라스틱제품"
+  },
+  {
+    "family": "MTI",
+    "level": 2,
+    "code": "32",
+    "name": "고무제품"
+  },
+  {
+    "family": "MTI",
+    "level": 2,
+    "code": "33",
+    "name": "가죽및모피제품"
+  },
+  {
+    "family": "MTI",
+    "level": 2,
+    "code": "41",
+    "name": "섬유원료"
+  },
+  {
+    "family": "MTI",
+    "level": 2,
+    "code": "42",
+    "name": "섬유사"
+  },
+  {
+    "family": "MTI",
+    "level": 2,
+    "code": "43",
+    "name": "직물"
+  },
+  {
+    "family": "MTI",
+    "level": 2,
+    "code": "44",
+    "name": "섬유패션제품"
+  },
+  {
+    "family": "MTI",
+    "level": 2,
+    "code": "51",
+    "name": "생활용품"
+  },
+  {
+    "family": "MTI",
+    "level": 2,
+    "code": "52",
+    "name": "기타 생활용품"
+  },
+  {
+    "family": "MTI",
+    "level": 2,
+    "code": "61",
+    "name": "철강제품"
+  },
+  {
+    "family": "MTI",
+    "level": 2,
+    "code": "62",
+    "name": "비철금속제품"
+  },
+  {
+    "family": "MTI",
+    "level": 2,
+    "code": "63",
+    "name": "식탁용구"
+  },
+  {
+    "family": "MTI",
+    "level": 2,
+    "code": "64",
+    "name": "주화못및컨테이너"
+  },
+  {
+    "family": "MTI",
+    "level": 2,
+    "code": "69",
+    "name": "기타철강금속제품"
+  },
+  {
+    "family": "MTI",
+    "level": 2,
+    "code": "71",
+    "name": "제조장비"
+  },
+  {
+    "family": "MTI",
+    "level": 2,
+    "code": "72",
+    "name": "산업기계"
+  },
+  {
+    "family": "MTI",
+    "level": 2,
+    "code": "73",
+    "name": "정밀기계"
+  },
+  {
+    "family": "MTI",
+    "level": 2,
+    "code": "74",
+    "name": "수송기계"
+  },
+  {
+    "family": "MTI",
+    "level": 2,
+    "code": "75",
+    "name": "에너지기계"
+  },
+  {
+    "family": "MTI",
+    "level": 2,
+    "code": "76",
+    "name": "기계부품"
+  },
+  {
+    "family": "MTI",
+    "level": 2,
+    "code": "81",
+    "name": "산업용전자제품"
+  },
+  {
+    "family": "MTI",
+    "level": 2,
+    "code": "82",
+    "name": "가정용전자제품"
+  },
+  {
+    "family": "MTI",
+    "level": 2,
+    "code": "83",
+    "name": "전자부품"
+  },
+  {
+    "family": "MTI",
+    "level": 2,
+    "code": "84",
+    "name": "전기기기"
+  },
+  {
+    "family": "MTI",
+    "level": 2,
+    "code": "91",
+    "name": "인쇄물"
+  },
+  {
+    "family": "MTI",
+    "level": 2,
+    "code": "92",
+    "name": "예술품 및 수집품"
+  },
+  {
+    "family": "MTI",
+    "level": 2,
+    "code": "93",
+    "name": "바이오헬스"
+  },
+  {
+    "family": "MTI",
+    "level": 2,
+    "code": "95",
+    "name": "의료위생용품"
+  },
+  {
+    "family": "MTI",
+    "level": 2,
+    "code": "96",
+    "name": "보석및귀금속제품"
+  },
+  {
+    "family": "MTI",
+    "level": 2,
+    "code": "97",
+    "name": "무기류"
+  },
+  {
+    "family": "MTI",
+    "level": 2,
+    "code": "98",
+    "name": "가발및가눈썹"
+  },
+  {
+    "family": "MTI",
+    "level": 2,
+    "code": "99",
+    "name": "기타잡제품"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "011",
+    "name": "곡실류"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "012",
+    "name": "산식물"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "013",
+    "name": "식물성물질"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "014",
+    "name": "식물성 재료"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "015",
+    "name": "기호식품"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "016",
+    "name": "농산가공품"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "022",
+    "name": "육류"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "024",
+    "name": "축산가공품"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "031",
+    "name": "목재류"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "041",
+    "name": "어류"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "042",
+    "name": "갑각류"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "043",
+    "name": "연체동물"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "045",
+    "name": "어육및어란"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "046",
+    "name": "수산가공품"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "049",
+    "name": "기타수산물"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "113",
+    "name": "동광"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "119",
+    "name": "기타금속광물"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "129",
+    "name": "기타비금속광물"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "213",
+    "name": "석유화학합섬원료"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "214",
+    "name": "합성수지"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "215",
+    "name": "합성고무"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "219",
+    "name": "기타석유화학제품"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "221",
+    "name": "염료및안료"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "227",
+    "name": "비누치약및화장품"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "228",
+    "name": "정밀화학원료"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "229",
+    "name": "기타정밀화학제품"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "242",
+    "name": "타일및도자기제품"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "243",
+    "name": "유리제품"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "249",
+    "name": "기타요업제품"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "252",
+    "name": "종이제품"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "262",
+    "name": "운모제품"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "290",
+    "name": "기타화학공업제품"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "310",
+    "name": "플라스틱 제품"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "320",
+    "name": "고무제품"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "422",
+    "name": "인조섬유장섬유사"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "435",
+    "name": "인조단섬유직물"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "439",
+    "name": "기타직물"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "441",
+    "name": "의류"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "442",
+    "name": "가방"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "443",
+    "name": "신발"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "449",
+    "name": "기타섬유제품"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "511",
+    "name": "위생용품"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "512",
+    "name": "가구"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "514",
+    "name": "운동 레저용품"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "515",
+    "name": "문구 및 완구"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "516",
+    "name": "주방용품"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "517",
+    "name": "유아용품"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "518",
+    "name": "패션잡화"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "525",
+    "name": "공예품"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "529",
+    "name": "기타 생활용품"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "611",
+    "name": "형강"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "612",
+    "name": "선재봉강및철근"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "613",
+    "name": "철강판"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "614",
+    "name": "철강관및철강선"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "617",
+    "name": "주단조품"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "621",
+    "name": "알루미늄"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "622",
+    "name": "동제품"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "623",
+    "name": "니켈제품"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "628",
+    "name": "텅스텐몰리브덴및망간제품"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "629",
+    "name": "기타비철금속제품"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "690",
+    "name": "기타철강금속제품"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "691",
+    "name": "원부자재"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "692",
+    "name": "기타철강재"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "711",
+    "name": "금속공작기계"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "712",
+    "name": "압연기용접기및주조설비"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "713",
+    "name": "섬유및화학기계"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "714",
+    "name": "제지인쇄기계"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "715",
+    "name": "식품가공포장기계"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "719",
+    "name": "기타기계류"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "721",
+    "name": "건설광산기계"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "723",
+    "name": "운반하역기계"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "729",
+    "name": "기타산업기계"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "732",
+    "name": "반도체제조용장비"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "741",
+    "name": "자동차"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "742",
+    "name": "자동차부품"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "743",
+    "name": "이륜차자전거및부품"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "746",
+    "name": "선박해양구조물및부품"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "747",
+    "name": "항공기및부품"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "751",
+    "name": "공기조절기및냉난방기"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "752",
+    "name": "원동기및펌프"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "761",
+    "name": "기계요소"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "762",
+    "name": "금형"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "763",
+    "name": "공구"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "812",
+    "name": "무선통신기기"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "813",
+    "name": "컴퓨터"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "814",
+    "name": "전자응용기기"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "815",
+    "name": "계측제어분석기"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "821",
+    "name": "영상기기"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "822",
+    "name": "음향기기"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "823",
+    "name": "냉장고"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "825",
+    "name": "난방및전열기기"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "826",
+    "name": "조명기기"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "829",
+    "name": "기타가정용전자"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "831",
+    "name": "반도체"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "833",
+    "name": "수동부품"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "834",
+    "name": "기구부품"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "836",
+    "name": "축전지 및 소재"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "837",
+    "name": "평판디스플레이 및 센서"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "839",
+    "name": "기타전자부품"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "841",
+    "name": "전력용기기"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "842",
+    "name": "산업용 전기기기"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "849",
+    "name": "기타중전기기"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "931",
+    "name": "의약품"
+  },
+  {
+    "family": "MTI",
+    "level": 3,
+    "code": "932",
+    "name": "의료기기"
+  },
+  {
+    "family": "MTI",
+    "level": 4,
+    "code": "0164",
+    "name": "면류"
+  },
+  {
+    "family": "MTI",
+    "level": 4,
+    "code": "0419",
+    "name": "기타어류"
+  },
+  {
+    "family": "MTI",
+    "level": 4,
+    "code": "0421",
+    "name": "새우"
+  },
+  {
+    "family": "MTI",
+    "level": 4,
+    "code": "0422",
+    "name": "게"
+  },
+  {
+    "family": "MTI",
+    "level": 4,
+    "code": "0431",
+    "name": "오징어"
+  },
+  {
+    "family": "MTI",
+    "level": 4,
+    "code": "0451",
+    "name": "어육"
+  },
+  {
+    "family": "MTI",
+    "level": 4,
+    "code": "1130",
+    "name": "동광"
+  },
+  {
+    "family": "MTI",
+    "level": 4,
+    "code": "2273",
+    "name": "화장품"
+  },
+  {
+    "family": "MTI",
+    "level": 4,
+    "code": "4431",
+    "name": "신발"
+  },
+  {
+    "family": "MTI",
+    "level": 4,
+    "code": "6111",
+    "name": "철강및비합금강형강"
+  },
+  {
+    "family": "MTI",
+    "level": 4,
+    "code": "6122",
+    "name": "봉강"
+  },
+  {
+    "family": "MTI",
+    "level": 4,
+    "code": "6132",
+    "name": "열연강판"
+  },
+  {
+    "family": "MTI",
+    "level": 4,
+    "code": "6133",
+    "name": "냉연강판"
+  },
+  {
+    "family": "MTI",
+    "level": 4,
+    "code": "6134",
+    "name": "아연도강판"
+  },
+  {
+    "family": "MTI",
+    "level": 4,
+    "code": "6141",
+    "name": "철강관"
+  },
+  {
+    "family": "MTI",
+    "level": 4,
+    "code": "6142",
+    "name": "철강선"
+  },
+  {
+    "family": "MTI",
+    "level": 4,
+    "code": "6171",
+    "name": "주단강"
+  },
+  {
+    "family": "MTI",
+    "level": 4,
+    "code": "6911",
+    "name": "합금철"
+  },
+  {
+    "family": "MTI",
+    "level": 4,
+    "code": "6922",
+    "name": "연선및와이어로프"
+  },
+  {
+    "family": "MTI",
+    "level": 4,
+    "code": "7322",
+    "name": "반도체제조용장비부품"
+  },
+  {
+    "family": "MTI",
+    "level": 4,
+    "code": "7413",
+    "name": "승용차"
+  },
+  {
+    "family": "MTI",
+    "level": 4,
+    "code": "7420",
+    "name": "자동차부품"
+  },
+  {
+    "family": "MTI",
+    "level": 4,
+    "code": "7461",
+    "name": "선박"
+  },
+  {
+    "family": "MTI",
+    "level": 4,
+    "code": "7472",
+    "name": "항공기부품"
+  },
+  {
+    "family": "MTI",
+    "level": 4,
+    "code": "7521",
+    "name": "원동기"
+  },
+  {
+    "family": "MTI",
+    "level": 4,
+    "code": "7522",
+    "name": "펌프"
+  },
+  {
+    "family": "MTI",
+    "level": 4,
+    "code": "7612",
+    "name": "밸브"
+  },
+  {
+    "family": "MTI",
+    "level": 4,
+    "code": "7615",
+    "name": "전동축및기어"
+  },
+  {
+    "family": "MTI",
+    "level": 4,
+    "code": "8151",
+    "name": "계측기"
+  },
+  {
+    "family": "MTI",
+    "level": 4,
+    "code": "8342",
+    "name": "연결부품"
+  },
+  {
+    "family": "MTI",
+    "level": 4,
+    "code": "8361",
+    "name": "축전지"
+  },
+  {
+    "family": "MTI",
+    "level": 4,
+    "code": "8412",
+    "name": "변압기"
+  },
+  {
+    "family": "MTI",
+    "level": 4,
+    "code": "8415",
+    "name": "전선"
+  },
+  {
+    "family": "MTI",
+    "level": 4,
+    "code": "8422",
+    "name": "전동기"
+  },
+  {
+    "family": "MTI",
+    "level": 4,
+    "code": "8491",
+    "name": "회전기기 부분품"
+  }
+]

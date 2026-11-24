@@ -11,6 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse, quote
 from pathlib import Path
 import json, os, time, threading, secrets, hmac
+from analysis_engine import parse_files as analysis_parse_files, make_docx as analysis_make_docx
 from engine import build_report, Reject, concat_kstats, require_core_kstat_rows, validate_main_schema, read_kstat
 from xlreader import number
 from kstat_collect import integration_status, fetch_approved_connector, classify, unpack_zip, period_for_main, EXPECTED_KEYS, REQUIRED_SOURCES, requirements, SORT_FOR_SOURCE, _expected_totals
@@ -74,10 +75,15 @@ class Handler(BaseHTTPRequestHandler):
         if path.path=='/kstat/status':
             self.json(200,integration_status())
         elif path.path=='/health':
-            self.json(200,{'status':'ok','version':'v41-correct-code-column','charts':'excel-A2-C14-to-A18-C30','font':'pre-rendered-glyph-png-no-server-font'})
-        elif path.path in ('/','/guide','/report'):
-            pages={'/':'index.html','/guide':'guide.html','/report':'report.html'}
+            self.json(200,{'status':'ok','version':'v42-analysis-studio','charts':'excel-A2-C14-to-A18-C30','font':'pre-rendered-glyph-png-no-server-font'})
+        elif path.path in ('/','/guide','/report','/analysis'):
+            pages={'/':'index.html','/guide':'guide.html','/report':'report.html','/analysis':'analysis.html'}
             self.sendbytes(200,(ROOT/'static'/pages[path.path]).read_bytes(),'text/html; charset=utf-8')
+        elif path.path=='/analysis/catalog':
+            self.sendbytes(200,(ROOT/'static'/'catalog.json').read_bytes(),'application/json; charset=utf-8')
+        elif path.path=='/analysis/csv-template':
+            data='연월,지역,국가,품목코드,품목명,분류,당월누계,수출액,수입액,전년수출액,전년수입액\n'.encode('utf-8-sig')
+            self.sendbytes(200,data,'text/csv; charset=utf-8',{'Content-Disposition':"attachment; filename*=UTF-8''kstat_country_month_template.csv"})
         elif path.path.startswith('/assets/') or path.path.startswith('/downloads/'):
             # Serve only bounded, release-owned static assets; never expose source or uploaded data.
             base=(ROOT/'static').resolve()
@@ -88,7 +94,7 @@ class Handler(BaseHTTPRequestHandler):
             mime={'.svg':'image/svg+xml','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.zip':'application/zip','.css':'text/css','.js':'text/javascript'}.get(ext)
             if not mime:
                 self.json(404,{'error':'지원하지 않는 파일입니다.'});return
-            extra={'Content-Disposition':"attachment; filename=busan-trade-report-helper-v41.zip"} if ext=='.zip' else None
+            extra={'Content-Disposition':"attachment; filename=busan-trade-report-helper-v42.zip"} if ext=='.zip' else None
             self.sendbytes(200,item.read_bytes(),mime,extra)
         elif path.path=='/download':
             clean_cache()
@@ -104,9 +110,51 @@ class Handler(BaseHTTPRequestHandler):
                 name=result['name'];data=result['data'];content_type='application/octet-stream'
             self.sendbytes(200,data,content_type,{'Content-Disposition':"attachment; filename*=UTF-8''"+quote(name)})
         else:self.json(404,{'error':'페이지를 찾을 수 없습니다'})
+
+    def handle_analysis_parse(self):
+        try:
+            size=int(self.headers.get('Content-Length','0') or 0)
+            if size<=0 or size>40*1024*1024:raise ValueError('업로드는 전체 40MB 이하로 제한합니다.')
+            ctype=self.headers.get('Content-Type','')
+            if 'multipart/form-data' not in ctype:raise ValueError('파일 업로드 형식이 아닙니다.')
+            raw=self.rfile.read(size)
+            msg=BytesParser(policy=policy.default).parsebytes(
+                b'MIME-Version: 1.0\r\nContent-Type: '+ctype.encode()+b'\r\n\r\n'+raw)
+            files=[]
+            for part in msg.iter_parts():
+                filename=part.get_filename()
+                if filename and part.get_param('name',header='content-disposition')=='sources':
+                    files.append((Path(filename).name,part.get_payload(decode=True)))
+            self.json(200,analysis_parse_files(files))
+        except (ValueError,KeyError) as e:
+            self.json(422,{'error':str(e)[:300]})
+        except Exception as e:
+            print('[WEB] analysis parse error',type(e).__name__)
+            self.json(422,{'error':'통계 파일을 읽지 못했습니다. 원본 형식 및 조회기간을 확인하세요.'})
+
+    def handle_analysis_report(self):
+        try:
+            size=int(self.headers.get('Content-Length','0') or 0)
+            if size<=0 or size>1024*1024:raise ValueError('분석 내용은 1MB 이하로 제한합니다.')
+            if not self.headers.get('Content-Type','').startswith('application/json'):
+                raise ValueError('JSON 형식으로 보내 주세요.')
+            payload=json.loads(self.rfile.read(size).decode('utf-8'))
+            if not isinstance(payload,dict):raise ValueError('보고서 내용이 없습니다.')
+            b=analysis_make_docx(payload)
+            self.sendbytes(200,b,'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                {'Content-Disposition':"attachment; filename*=UTF-8''busan_trade_investigation.docx"})
+        except (ValueError,KeyError,json.JSONDecodeError) as e:self.json(422,{'error':str(e)[:300]})
+        except Exception as e:
+            print('[WEB] analysis report error',type(e).__name__)
+            self.json(422,{'error':'분석보고서 생성 중 오류가 발생했습니다.'})
+
     def do_POST(self):
         if not self.check_auth(): return
         endpoint=urlparse(self.path).path
+        if endpoint=='/analysis/parse':
+            return self.handle_analysis_parse()
+        if endpoint=='/analysis/report':
+            return self.handle_analysis_report()
         if endpoint not in ('/generate','/inspect'):
             self.json(404,{'error':'잘못된 요청'});return
         try:size=int(self.headers.get('Content-Length','0') or 0)
